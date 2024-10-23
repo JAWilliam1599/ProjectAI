@@ -227,7 +227,14 @@ class GamePlay(Frame):
           label_goal = Label(self.map_frame, image = self.goal_image, bg="#222a5c")
           label_goal.grid(row=row_index, column=column_index)
 
-        # Box on switch...
+        elif item == "*":
+          # Box on switch...
+          label_box = Label(self.map_frame, image=self.box_image, bg="yellow")
+          label_box.grid(row=row_index, column=column_index)
+          label_weight = Label(self.map_frame, text= self.list_rocks_weight[self.cweight], bg="#FFFFFF", borderwidth=0)
+          label_weight.config(font=("Helvetica", 12, "bold"))
+          label_weight.grid(row=row_index, column=column_index)
+          self.cweight += 1
         else: continue
         
 
