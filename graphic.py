@@ -7,7 +7,6 @@ Note:
   - #222a5c is the blue background
   - #38002c is the red background
 """
-chosenIndex = 0
 
 class tkinterApp(Tk):
     # __init__ function for class tkinterApp 
@@ -49,10 +48,10 @@ class tkinterApp(Tk):
         frame = self.frames[cont]
         frame.tkraise()
 
-
 class StartPage(Frame):
     def __init__(self, parent, controller): 
         Frame.__init__(self, parent, width=1050, height=649)
+        self.previous_button = None
          
         self.bg = PhotoImage(file = "Assets/bg.png") 
 
@@ -64,7 +63,6 @@ class StartPage(Frame):
         label = Label(self, text ="Ares's Adventure", font=("Helvetica", 40, "bold"), fg="white", bg="#222a5c")
         label.place(relx=0.5, y= 100, anchor=CENTER)
 
-        
         # Start button
         self.startButton = Button(self, text="Start", fg="white", bg="#222a5c", padx=50, pady=1, command = lambda: self.start_btn_fn(controller))
         self.startButton.configure(font=("Helvetica", 18, "bold"))
@@ -72,22 +70,22 @@ class StartPage(Frame):
 
         
         # BFS button
-        self.bfsButton = Button(self, text="BFS", fg="white", bg="#222a5c", padx=50, pady=1, command=self.change_bfs_button_color)
+        self.bfsButton = Button(self, text="BFS", fg="white", bg="#222a5c", padx=50, pady=1, command= lambda: self.change_color(self.bfsButton))
         self.bfsButton.configure(font=("Helvetica", 12, "bold"))
         self.bfsButton.place(x = 705, y = 501)
 
         # DFS button
-        self.dfsButton = Button(self, text="DFS", fg="white", bg="#222a5c", padx=50, pady=1,  command=self.change_dfs_button_color)
+        self.dfsButton = Button(self, text="DFS", fg="white", bg="#222a5c", padx=50, pady=1, command= lambda: self.change_color(self.dfsButton))
         self.dfsButton.configure(font=("Helvetica", 12, "bold"))
         self.dfsButton.place(x = 543, y = 501)
 
         # UCS button
-        self.ucsButton = Button(self, text="UCS", fg="white", bg="#222a5c", padx=50, pady=1,  command=self.change_ucs_button_color)
+        self.ucsButton = Button(self, text="UCS", fg="white", bg="#222a5c", padx=50, pady=1,  command= lambda: self.change_color(self.ucsButton))
         self.ucsButton.configure(font=("Helvetica", 12, "bold"))
         self.ucsButton.place(x = 381, y = 501)
 
         # A* button
-        self.astarButton = Button(self, text="A*", fg="white", bg="#222a5c", padx=58, pady=1,  command=self.change_astar_button_color)
+        self.astarButton = Button(self, text="A*", fg="white", bg="#222a5c", padx=58, pady=1,  command= lambda: self.change_color(self.astarButton))
         self.astarButton.configure(font=("Helvetica", 12, "bold"))
         self.astarButton.place(x = 220, y = 501)
 
@@ -96,48 +94,24 @@ class StartPage(Frame):
         self.alert.config(font=("Helvetica", 12, "bold"))
 
     def start_btn_fn(self, controller):
-      if chosenIndex != 0:
+      if self.previous_button != None:
         controller.show_frame(GamePlay)
       else:
         self.alert.place(x = 415, y = 545)
     
-    def change_bfs_button_color(self):
-        self.bfsButton.config(bg="#38002c")
-        self.dfsButton.config(bg="#222a5c")
-        self.ucsButton.config(bg="#222a5c")
-        self.astarButton.config(bg="#222a5c")
-        global chosenIndex
-        chosenIndex = 1
-        self.alert.destroy()
-    
-    def change_dfs_button_color(self):
-        self.bfsButton.config(bg="#222a5c")
-        self.dfsButton.config(bg="#38002c")
-        self.ucsButton.config(bg="#222a5c")
-        self.astarButton.config(bg="#222a5c")
-        global chosenIndex
-        chosenIndex = 2
-        self.alert.destroy()
-
-    def change_ucs_button_color(self):
-        self.bfsButton.config(bg="#222a5c")
-        self.dfsButton.config(bg="#222a5c")
-        self.ucsButton.config(bg="#38002c")
-        self.astarButton.config(bg="#222a5c")
-        global chosenIndex
-        chosenIndex = 3
-        self.alert.destroy()
-
-    def change_astar_button_color(self):
-        self.bfsButton.config(bg="#222a5c")
-        self.dfsButton.config(bg="#222a5c")
-        self.ucsButton.config(bg="#222a5c")
-        self.astarButton.config(bg="#38002c")
-        global chosenIndex
-        chosenIndex = 4
-        self.alert.destroy()
-
-
+    def change_color(self, clicked_button):
+      #Change color of previous clicked button to default color
+      if self.previous_button and self.previous_button != clicked_button:
+        self.previous_button.config(bg="#222a5c")
+        clicked_button.config(bg="#38002c")
+        self.previous_button = clicked_button
+      else:
+        clicked_button.config(bg="#38002c")
+        self.previous_button = clicked_button
+      
+      # Alert if no algorithm is selected by destroying the alert
+      self.alert.destroy()
+      
 class GamePlay(Frame):     
     def __init__(self, parent, controller):
       Frame.__init__(self, parent, width=1050, height=649 )
