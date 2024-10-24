@@ -1,5 +1,6 @@
 # Import module  
 from tkinter import *
+import os
   
 """
 Note:
@@ -7,6 +8,14 @@ Note:
   - #222a5c is the blue background
   - #38002c is the red background of the button
 """
+chosenLevel = 1
+filenames = []
+# Iterate over all files in the folder
+for filename in os.listdir("Testcase"):
+    # Check if it's a file (not a directory)
+    if os.path.isfile(os.path.join("Testcase", filename)):
+        filenames.append(filename)
+numberOfFiles = len(filenames)
 
 class tkinterApp(Tk):
   # __init__ function for class tkinterApp 
@@ -18,11 +27,11 @@ class tkinterApp(Tk):
       self.geometry("1050x649")
       self.resizable(False, False)
       # Creating a container
-      container = Frame(self)  
-      container.pack(side = "top", fill = "both", expand = True) 
+      self.container = Frame(self)  
+      self.container.pack(side = "top", fill = "both", expand = True) 
 
-      container.grid_rowconfigure(0, weight = 1)
-      container.grid_columnconfigure(0, weight = 1)
+      self.container.grid_rowconfigure(0, weight = 1)
+      self.container.grid_columnconfigure(0, weight = 1)
 
       # Initializing frames to an empty array
       self.frames = {}  
@@ -31,7 +40,7 @@ class tkinterApp(Tk):
       # Of the different page layouts
       for F in (StartPage, GamePlay):
 
-          frame = F(container, self)
+          frame = F(self.container, self)
 
           # initializing frame of that object from
           # startpage, page1, page2 respectively with 
@@ -45,6 +54,10 @@ class tkinterApp(Tk):
   # To display the current frame passed as
   # Parameter
   def show_frame(self, cont):
+      if cont == GamePlay:
+        frame = GamePlay(self.container, self)
+        self.frames[GamePlay] = frame
+        frame.grid(row = 0, column = 0, sticky ="nsew")
       frame = self.frames[cont]
       frame.tkraise()
 
@@ -63,31 +76,45 @@ class StartPage(Frame):
       label = Label(self, text ="Ares's Adventure", font=("Helvetica", 40, "bold"), fg="white", bg="#222a5c")
       label.place(relx=0.5, y= 100, anchor=CENTER)
 
+      # Level Label
+      self.levelLabel = Label(self, text = chosenLevel, font=("Helvetica", 60, "bold"), fg="white", bg="#222a5c")
+      self.levelLabel.place(relx=0.5, y= 300, anchor=CENTER)
+
+      # Level Increase Button
+      self.levelIncreaseImage = PhotoImage(file= "Assets/rightArr.png") 
+      self.levelIncreaseButton = Button(self, bg="#ffffff", image=self.levelIncreaseImage, padx=0, pady=0, command= self.level_increase)
+      self.levelIncreaseButton.place(x = 600, y = 285)
+
+      # Level Decrease Button
+      self.levelDecreaseeImage = PhotoImage(file= "Assets/leftArr.png") 
+      self.levelDecreaseeButton = Button(self, bg="#ffffff", image=self.levelDecreaseeImage, padx=0, pady=0, command= self.level_decrease)
+      self.levelDecreaseeButton.place(x = 415, y = 285)
+
       # Start button
       self.startButton = Button(self, text="Start", fg="white", bg="#222a5c", padx=50, pady=1, command = lambda: self.start_btn_fn(controller))
       self.startButton.configure(font=("Helvetica", 18, "bold"))
       self.startButton.place(relx=0.5, y= 601, anchor=CENTER)
 
-      
+
       # BFS button
       self.bfsButton = Button(self, text="BFS", fg="white", bg="#222a5c", padx=50, pady=1, command= lambda: self.change_color(self.bfsButton))
       self.bfsButton.configure(font=("Helvetica", 12, "bold"))
-      self.bfsButton.place(x = 705, y = 501)
+      self.bfsButton.place(x = 700, y = 501)
 
       # DFS button
       self.dfsButton = Button(self, text="DFS", fg="white", bg="#222a5c", padx=50, pady=1, command= lambda: self.change_color(self.dfsButton))
       self.dfsButton.configure(font=("Helvetica", 12, "bold"))
-      self.dfsButton.place(x = 543, y = 501)
+      self.dfsButton.place(x = 538, y = 501)
 
       # UCS button
       self.ucsButton = Button(self, text="UCS", fg="white", bg="#222a5c", padx=50, pady=1,  command= lambda: self.change_color(self.ucsButton))
       self.ucsButton.configure(font=("Helvetica", 12, "bold"))
-      self.ucsButton.place(x = 381, y = 501)
+      self.ucsButton.place(x = 376, y = 501)
 
       # A* button
       self.astarButton = Button(self, text="A*", fg="white", bg="#222a5c", padx=58, pady=1,  command= lambda: self.change_color(self.astarButton))
       self.astarButton.configure(font=("Helvetica", 12, "bold"))
-      self.astarButton.place(x = 220, y = 501)
+      self.astarButton.place(x = 215, y = 501)
 
       # Alert
       self.alert = Label(self, text="Please choose an algorithm!", fg="red", bg="#222a5c")
@@ -111,6 +138,19 @@ class StartPage(Frame):
     
     # Alert if no algorithm is selected by destroying the alert
     self.alert.destroy()
+  
+  def level_increase(self):
+    global chosenLevel
+    global numberOfFiles
+    if chosenLevel < numberOfFiles:
+      chosenLevel += 1
+      self.levelLabel.config(text=chosenLevel)
+
+  def level_decrease(self):
+    global chosenLevel
+    if chosenLevel > 1:
+      chosenLevel -= 1
+      self.levelLabel.config(text=chosenLevel)
       
 class GamePlay(Frame):     
   def __init__(self, parent, controller):
@@ -125,6 +165,10 @@ class GamePlay(Frame):
     self.counterStep = Label(self, text="Step: 0", fg="white", bg="#222a5c", padx=10, pady=10, width=5, height=1)
     self.counterStep.config(font=("Helvetica", 12, "bold"))
     self.counterStep.place(x = 20, y = 20)
+
+    self.counterWeight = Label(self, text="Weight: 0", fg="white", bg="#222a5c", padx=10, pady=10, width=7, height=1)
+    self.counterWeight.config(font=("Helvetica", 12, "bold"))
+    self.counterWeight.place(x = 120, y = 20)
 
     # Pause button
     self.isPause = True
@@ -145,7 +189,8 @@ class GamePlay(Frame):
     self.restartButton.place(x = 982, y = 144)
 
     # Load test file
-    self.load_file("Testcase/input-01.txt")
+    self.load_file('Testcase/' + filenames[chosenLevel-1])
+    print('load' + filenames[chosenLevel-1])
     self.draw_map()
   
   def change_pause_btn(self):
