@@ -213,31 +213,33 @@ class GamePlay(Frame):
 
         elif item == "$":
           # Box
-          label_box = Label(self.map_frame, image = self.box_image, bg="black")
-          label_box.grid(row=row_index, column=column_index)
-          label_weight = Label(self.map_frame, text= self.list_rocks_weight[self.cweight], bg="#FFFFFF", borderwidth=0)
-          label_weight.config(font=("Helvetica", 12, "bold"))
-          label_weight.grid(row=row_index, column=column_index)
+          canva_box = Canvas(self.map_frame, bg="black", highlightbackground="black", borderwidth=0, width=29, height=29)
+          canva_box.grid(row=row_index, column=column_index)
+          canva_box.create_image(16, 16, image=self.box_image, anchor=CENTER)
+
+          canva_box.create_image(16, 16, image=self.box_bg, anchor= CENTER)
+          canva_box.create_text(16, 16, text=self.list_rocks_weight[self.cweight], font=("Helvetica", 10, "bold"))
           self.cweight += 1
 
         elif item == "+":
           # Player on switch
-          label_player = Label(self.map_frame, image = self.player_image, bg="#222a5c")
-          label_player.grid(row=row_index, column=column_index)
-          label_goal = Label(self.map_frame, image = self.goal_image, bg="#222a5c")
-          label_goal.grid(row=row_index, column=column_index)
+          canva_player_on_switch = Canvas(self.map_frame, bg = "#222a5c", highlightthickness=0, borderwidth=0, width=32, height=32)
+          canva_player_on_switch.grid(row=row_index, column=column_index)
+
+          canva_player_on_switch.create_image(16, 16, image=self.goal_image, anchor=CENTER)
+          canva_player_on_switch.create_image(16, 16, image=self.player_image, anchor=CENTER)
 
         elif item == "*":
           # Box on switch...
-          label_box = Label(self.map_frame, image=self.box_image, bg="yellow")
-          label_box.grid(row=row_index, column=column_index)
-          label_weight = Label(self.map_frame, text= self.list_rocks_weight[self.cweight], bg="#FFFFFF", borderwidth=0)
-          label_weight.config(font=("Helvetica", 12, "bold"))
-          label_weight.grid(row=row_index, column=column_index)
+          canva_box = Canvas(self.map_frame, bg="black", highlightbackground="yellow", borderwidth=0, width=29, height=29)
+          canva_box.grid(row=row_index, column=column_index)
+          canva_box.create_image(16, 16, image=self.box_image, anchor=CENTER)
+
+          canva_box.create_image(16, 16, image=self.box_bg, anchor= CENTER)
+          canva_box.create_text(16, 16, text=self.list_rocks_weight[self.cweight], font=("Helvetica", 10, "bold"))
           self.cweight += 1
         else: continue
         
-
 # Driver Code
 def application():
   app = tkinterApp()
