@@ -133,10 +133,7 @@ class StartPage(Frame, metaclass=SingletonMeta):
   def start_btn_fn(self, controller):
     gameplay1 = GamePlay.get_instance()
     if self.previous_button != None:
-      gameplay1.load_file(filename='Testcase/' + filenames[chosenLevel-1])
-      print('load' + filenames[chosenLevel-1])
-      gameplay1.draw_map()
-      gameplay1.action()
+      gameplay1.action(filename='Testcase/' + filenames[chosenLevel-1])
       controller.show_frame(GamePlay)
     else:
       self.alert.place(x = 415, y = 545)
@@ -210,7 +207,7 @@ class GamePlay(Frame, metaclass=SingletonMeta):
 
     # Restart button
     self.restartImage = PhotoImage(file = "Assets/restart.png") 
-    self.restartButton = Button(self, bg="#222a5c", image=self.restartImage, padx=0, pady=0)
+    self.restartButton = Button(self, bg="#222a5c", image=self.restartImage, padx=0, pady=0, command= lambda: self.action(filename='Testcase/' + filenames[chosenLevel-1]))
     self.restartButton.place(x = 982, y = 144)
   
   def change_pause_btn(self):
@@ -221,47 +218,54 @@ class GamePlay(Frame, metaclass=SingletonMeta):
       self.pauseButton.config(image=self.startImage)
       self.isPause = True
 
-  #This function is called to load the map
-  def load_file(self, filename):
-    # Reinitialize all the variables
-    self.destroy_frame()
-    self.map_data.clear()  # Your map data goes here
-    self.list_rocks_weight.clear()  # Your weights data goes here
-    self.cweight = 0
-    self.player_position.clear()
-    if(self.player_canvas): self.player_canvas.destroy()
-    # Create a dict to store all canvas created
-    self.map_objects = {}
+  def create_player_on_canvas(self, row_index, column_index):
+      # Create Canvas for player
+      self.player_canvas = Canvas(self.map_frame, bg="#222a5c", highlightthickness=0, borderwidth=0, width=32, height=32)
+      self.player_canvas.grid(row=row_index, column=column_index)
+      self.player_canvas.create_image(16, 16, anchor=CENTER, image=self.player_image, tags="player")
 
-    # Read the first line of the file and parse in a list
-    try:
-      with open(filename, "r") as file_map:
-        file_map = open(filename, "r")
+      self.map_objects[f"{row_index}_{column_index}"] = self.player_canvas
+      self.player_position = [row_index, column_index]
 
-        each_rock = file_map.readline().split()
-        self.list_rocks_weight.extend(each_rock)
+  def create_box_on_canvas(self, row_index, column_index):
+      # Create Canvas for box
+      box_canvas = Canvas(self.map_frame, bg="#222a5c", highlightbackground="black", borderwidth=0, width=29, height=29)
+      box_canvas.grid(row=row_index, column=column_index)
 
-        # Read the whole file for a map
-        for line in file_map:
-          self.map_data.append(list(line.rstrip("\n")))
+      box_canvas.create_image(16, 16, image=self.box_image, anchor=CENTER)
+      box_canvas.create_image(16, 16, image=self.box_bg, anchor=CENTER)
+      box_canvas.create_text(16, 16, text=self.list_rocks_weight[self.cweight], font=("Helvetica", 10, "bold"), tags="weight")
+      self.cweight += 1
+      self.map_objects[f"{row_index}_{column_index}_box"] = box_canvas  # Store the box reference
 
-    # Catch exceptions and print
-    except FileNotFoundError:
-      print(f"File {filename} not found!")
-    except Exception as e:
-      print(f"An error occurred: {str(e)}")
+  def create_goal_on_canvas(self, row_index, column_index):
+      # Create Canvas for goal
+      goal_canvas = Canvas(self.map_frame, bg="#222a5c", highlightthickness=0, borderwidth=0, width=32, height=32)
+      goal_canvas.grid(row=row_index, column=column_index)
+      goal_canvas.create_image(16, 16, image=self.goal_image, anchor=CENTER)
 
-  # Subfunction to destroy entirely frame
-  def destroy_frame(self):
-    if self.map_frame and self.map_frame.winfo_exists():
-      for widget in self.map_frame.winfo_children():
-        widget.destroy()
+      if(self.map_data[row_index][column_index] == "+"):
+        goal_canvas.create_image(16, 16, image=self.player_image, anchor=CENTER, tags="player")
+        self.player_position = [row_index,column_index]
 
-      self.map_frame.destroy()
-      self.map_frame = None
+      self.map_objects[f"{row_index}_{column_index}"] = goal_canvas
 
-  # This function is called to draw the map
+  def action(self, filename):
+    """
+    This function handles the actions of the player\n
+    First, load all necessary file
+    Second, perform actions
+    """
+    # Initalize all the data and map
+    self.load_file(filename)
+    self.draw_map()
+    Actions.get_instance(self)
+    # Run the action
+
   def draw_map(self):
+    """
+    This function is called to draw the map
+    """
     # Create a frame to hold the canvas
     self.map_frame = Frame(self, bg="#222a5c")
     self.map_frame.place(relx=0.5, rely=0.5, anchor=CENTER)
@@ -305,44 +309,62 @@ class GamePlay(Frame, metaclass=SingletonMeta):
           self.create_box_on_canvas(row_index, column_index)
           self.map_objects.get(f"{row_index}_{column_index}_box").config(highlightbackground="yellow")
 
-  def create_player_on_canvas(self, row_index, column_index):
-      # Create Canvas for player
-      self.player_canvas = Canvas(self.map_frame, bg="#222a5c", highlightthickness=0, borderwidth=0, width=32, height=32)
-      self.player_canvas.grid(row=row_index, column=column_index)
-      self.player_canvas.create_image(16, 16, anchor=CENTER, image=self.player_image, tags="player")
-
-      self.map_objects[f"{row_index}_{column_index}"] = self.player_canvas
-      self.player_position = [row_index, column_index]
-
-  def create_box_on_canvas(self, row_index, column_index):
-      # Create Canvas for box
-      box_canvas = Canvas(self.map_frame, bg="#222a5c", highlightbackground="black", borderwidth=0, width=29, height=29)
-      box_canvas.grid(row=row_index, column=column_index)
-
-      box_canvas.create_image(16, 16, image=self.box_image, anchor=CENTER)
-      box_canvas.create_image(16, 16, image=self.box_bg, anchor=CENTER)
-      box_canvas.create_text(16, 16, text=self.list_rocks_weight[self.cweight], font=("Helvetica", 10, "bold"), tags="weight")
-      self.cweight += 1
-      self.map_objects[f"{row_index}_{column_index}_box"] = box_canvas  # Store the box reference
-
-  def create_goal_on_canvas(self, row_index, column_index):
-      # Create Canvas for goal
-      goal_canvas = Canvas(self.map_frame, bg="#222a5c", highlightthickness=0, borderwidth=0, width=32, height=32)
-      goal_canvas.grid(row=row_index, column=column_index)
-      goal_canvas.create_image(16, 16, image=self.goal_image, anchor=CENTER)
-
-      if(self.map_data[row_index][column_index] == "+"):
-        goal_canvas.create_image(16, 16, image=self.player_image, anchor=CENTER, tags="player")
-        self.player_position = [row_index,column_index]
-
-      self.map_objects[f"{row_index}_{column_index}"] = goal_canvas
-
-  def action(self):
+  def load_file(self, filename):
     """
-    This function handles the actions of the player
+    This function is called to load the data from text file
     """
-    Actions.get_instance(self)
-    # Run the action
+    # Clear previous data
+    self.reset_state()
+    # Read the first line of the file and parse in a list
+    try:
+      with open(filename, "r") as file_map:
+        file_map = open(filename, "r")
+
+        each_rock = file_map.readline().split()
+        self.list_rocks_weight.extend(each_rock)
+
+        # Read the whole file for a map
+        for line in file_map:
+          self.map_data.append(list(line.rstrip("\n")))
+
+    # Catch exceptions and print
+    except FileNotFoundError:
+      print(f"File {filename} not found!")
+    except Exception as e:
+      print(f"An error occurred: {str(e)}")
+
+  def destroy_frame(self):
+    """
+    Subfunction to destroy entirely frame
+    """
+    if self.map_frame and self.map_frame.winfo_exists():
+      for widget in self.map_frame.winfo_children():
+        print(widget)
+        widget.destroy()
+
+      self.map_frame.destroy()
+      self.map_frame = None
+
+  def reset_state(self):
+    """
+    This function is used to reset the state of the gameplay\n
+    Very important before loading a new stage
+    """
+    # Reinitialize all the variables
+    self.destroy_frame()
+    self.map_data.clear()  # Your map data goes here
+    self.list_rocks_weight.clear()  # Your weights data goes here
+    self.cweight = 0
+    self.player_position.clear()
+    if(self.player_canvas): self.player_canvas.destroy()
+    # Create a dict to store all canvas created
+    self.map_objects = {}
+
+    # Reset counter state
+    self.step_counter = 0
+    self.weight_counter = 0
+    self.counterStep.config(text=f"Step: {self.step_counter}")
+    self.counterWeight.config(text=f"Weight: {self.weight_counter}")
 
   @classmethod
   def get_instance(cls):
@@ -458,7 +480,7 @@ class Actions(metaclass=SingletonMeta):
     # The player landed on a space
     self.data[new_row][new_column] = "@"
     # Check if the player is from a goal to a space
-    if(player_canvas is None):
+    if(player_canvas is None or not player_canvas.winfo_exists()):
       # Create a new canvas for the player
       self.game_play.player_canvas = Canvas(self.game_play.map_frame, bg="#222a5c", highlightthickness=0, borderwidth=0, width=32, height=32)
       self.game_play.player_canvas.create_image(16, 16, image=self.game_play.player_image, anchor=CENTER, tags="player")
@@ -505,6 +527,7 @@ class Actions(metaclass=SingletonMeta):
       self.data[new_box_row][new_box_column] = "$"
       canva.config(highlightbackground= "black")
     canva.grid(row= new_box_row, column= new_box_column)
+
     for item in canva.find_withtag("weight"):
       self.add_weight(canva.itemcget(item, "text"))
       break
