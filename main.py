@@ -1,6 +1,6 @@
 import graphic
-import algorithm
 
 #Implementation for main
 
-graphic.application()
+if __name__ == '__main__':
+    graphic.application()
