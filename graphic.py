@@ -1,13 +1,25 @@
 # Import module  
 from tkinter import *
 import os
-import keyboard #Install keyboard module, "pip install keyboard"
+import time
+import threading
+import algorithm as a
+import concurrent.futures
+import time
+import tracemalloc
   
 """
 Note:
+  + Resources
   - The image file is inside assets.
   - #222a5c is the blue background
   - #38002c is the red background of the button
+
+  + Functions
+  - Called reset_state before drawing or else, the widget inside the frame will not be destroyed
+
+  + Patterns
+  - Singleton pattern is used to manage the window instance, So that only one window is open at a time.
 """
 class SingletonMeta(type):
   _instances = {}
@@ -131,10 +143,10 @@ class StartPage(Frame, metaclass=SingletonMeta):
       self.alert.config(font=("Helvetica", 12, "bold"))
 
   def start_btn_fn(self, controller):
-    gameplay1 = GamePlay.get_instance()
     if self.previous_button != None:
-      gameplay1.action(filename='Testcase/' + filenames[chosenLevel-1])
       controller.show_frame(GamePlay)
+      gameplay1 = GamePlay.get_instance()
+      threading.Thread(target=gameplay1.action, args=('Testcase/' + filenames[chosenLevel-1],)).start()
     else:
       self.alert.place(x = 415, y = 545)
   
@@ -172,7 +184,12 @@ class GamePlay(Frame, metaclass=SingletonMeta):
   cweight = 0
   player_position = []
   # Create a dict to store all canvas created
-  map_objects = {}  
+  map_objects = {} 
+
+  # Create some objects to parse in BFS
+  walls = [] # A list positions of walls
+  goals = [] # A list positions of goals
+  boxes = [] # A list positions of boxes
 
   def __init__(self, parent, controller):
     Frame.__init__(self, parent, width=1050, height=649 )
@@ -237,6 +254,7 @@ class GamePlay(Frame, metaclass=SingletonMeta):
       box_canvas.create_text(16, 16, text=self.list_rocks_weight[self.cweight], font=("Helvetica", 10, "bold"), tags="weight")
       self.cweight += 1
       self.map_objects[f"{row_index}_{column_index}_box"] = box_canvas  # Store the box reference
+      self.boxes.append([row_index, column_index])
 
   def create_goal_on_canvas(self, row_index, column_index):
       # Create Canvas for goal
@@ -249,6 +267,7 @@ class GamePlay(Frame, metaclass=SingletonMeta):
         self.player_position = [row_index,column_index]
 
       self.map_objects[f"{row_index}_{column_index}"] = goal_canvas
+      self.goals.append([row_index, column_index])
 
   def action(self, filename):
     """
@@ -286,6 +305,7 @@ class GamePlay(Frame, metaclass=SingletonMeta):
           self.wall_canvas.grid(row=row_index, column=column_index)
           self.wall_canvas.create_image(16, 16, anchor=CENTER, image=self.wall_image)
           self.map_objects[f"{row_index}_{column_index}"] = self.wall_canvas
+          self.walls.append([row_index, column_index])
 
         elif item == ".":
           # Goal
@@ -382,10 +402,12 @@ class Actions(metaclass=SingletonMeta):
     """
     self.game_play = game_play
     self.data = game_play.map_data #Brings the data to the class
-    keyboard.on_press_key("up", self.on_arrow_key)
-    keyboard.on_press_key("down", self.on_arrow_key)
-    keyboard.on_press_key("left", self.on_arrow_key)
-    keyboard.on_press_key("right", self.on_arrow_key)
+    # Run BFS to test
+    player_position = self.game_play.player_position
+    boxes = self.game_play.boxes
+    walls = self.game_play.walls
+    goals = self.game_play.goals
+
   
   def up(self):
     """
@@ -544,21 +566,69 @@ class Actions(metaclass=SingletonMeta):
     self.game_play.weight_counter += int(text)
     self.game_play.counterWeight.config(text=f"Weight: {self.game_play.weight_counter}")
 
-  def on_arrow_key(self, event):
-    if event.name == "up":
+  def move_with_character(self, character):
+    if character == "u":
       self.up()
-    elif event.name == "down":
+    elif character == "d":
       self.down()
-    elif event.name == "left":
+    elif character == "l":
       self.left()
-    elif event.name == "right":
+    elif character == "r":
       self.right()
 
   @classmethod
-  def get_instance(cls, game_play):
+  def get_instance(cls, action):
     if cls._instances.get(cls) is None:
-      cls._instances[cls] = cls(game_play)
+      tmp_action = cls._instances[cls] = cls(action)
+
+      tmp_action.data = tmp_action.game_play.map_data #Brings the data to the class
+      # Run BFS to test
+      player_position = tmp_action.game_play.player_position
+      boxes = tmp_action.game_play.boxes
+      walls = tmp_action.game_play.walls
+      goals = tmp_action.game_play.goals
+      
+      bfs = a.BFS_GameState(player_position, boxes, goals, walls, None, "")
+
+      # Start measuring memory and time
+      tracemalloc.start()
+      start_time = time.time()
+
+      with concurrent.futures.ThreadPoolExecutor() as executor:
+        future = executor.submit(bfs.bfs)  # Run BFS in a separate thread
+        goal_state = future.result()  # Wait for BFS to complete
+
+      # Stop measuring time and memory after BFS completes
+      end_time = time.time()
+      elapsed_time = (end_time - start_time)*1000
+
+      # Get the current, peak memory usage
+      current, peak = tracemalloc.get_traced_memory()
+      current = current >> 20 # To MB
+      tracemalloc.stop()
+
+      # Get the node generated
+      node_counter = goal_state.node_counter
+
+      # Move the player, init a new variable to make sure that string move is unmodified
+      if goal_state is not None:
+        string_move = goal_state.string_move.lower()
+        for character in string_move:
+          time.sleep(0.5)
+          tmp_action.move_with_character(character)
+
+
+      if (goal_state is not None):
+        tmp_action.write_to_file("BFS: \n" +
+          f"Steps: {tmp_action.game_play.step_counter}, Weights: {tmp_action.game_play.weight_counter}," + 
+          f" Node: {node_counter}, Time (ms): {elapsed_time}, Memory (MB): {current:.2f}\n" +
+          goal_state.string_move)
     return cls._instances[cls]
+
+# A function to write to the file the string of movement
+  def write_to_file(self, content):
+    with open("result.txt", 'w') as file:
+      file.write(content)
 
 # Driver Code
 def application():
