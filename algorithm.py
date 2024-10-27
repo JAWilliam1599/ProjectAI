@@ -78,28 +78,28 @@ class BFS_GameState:
             visited = manager.list() # Create a visited set
             visited.append([self.player_pos, self.boxes])
 
-            while queue:
-                batch_size = min(len(queue), 8)
-                current_states = [queue.popleft() for _ in range(batch_size)]
+            with Pool(processes=16) as pool:
+                while queue:
+                    batch_size = min(len(queue), 16)
+                    current_states = [queue.popleft() for _ in range(batch_size)]
 
-                # Check if in the batch, there is a goal state or not
-                for state in current_states:
-                    if state.is_goal_state(): 
-                        print("done")
-                        return state
+                    # Check if in the batch, there is a goal state or not
+                    for state in current_states:
+                        if state.is_goal_state(): 
+                            print("done")
+                            return state
 
-                with Pool() as pool:
                     results = pool.map(self.generate_state, current_states)
 
-                for neighbors in results:
-                    for neighbor in neighbors:
-                        if neighbor is None: continue
+                    for neighbors in results:
+                        for neighbor in neighbors:
+                            if neighbor is None: continue
 
-                        # Only add the neighbor to the visited list if it hasn't been added yet
-                        visited_list = [neighbor.player_pos, neighbor.boxes]
-                        if visited_list not in visited:
-                            visited.append(visited_list)
-                            queue.append(neighbor)
+                            # Only add the neighbor to the visited list if it hasn't been added yet
+                            visited_list = [neighbor.player_pos, neighbor.boxes]
+                            if visited_list not in visited:
+                                visited.append(visited_list)
+                                queue.append(neighbor)
         return None
     
     def generate_state(self, state):
