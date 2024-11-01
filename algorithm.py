@@ -16,12 +16,12 @@ class BFS_GameState:
         Goal state is a list of list of row and column [[row, column], [row, column],...]\n
         """
         self.player_pos = player_pos
-        self.walls = walls
-        self.boxes = boxes
-        self.goal_state = goal_state
+        self.walls = walls # Make this global
+        self.boxes = boxes # Make this as a key value of dictionary as not frequently moved
+        self.goal_state = goal_state # Make this global also
         self.string_move = string_move  # Store the string representation of the move (e.g., "RURU")
-        self.path = path if path else []
-        self.node_counter = node_count
+        self.path = path if path else [] # Remove this as we can use string_move, or reconstruct the path for further optimization
+        self.node_counter = node_count # Make this global to count the total number of node
 
     def is_goal_state(self):
         return self.goal_state == self.boxes  # Is the goal state is all the boxes is on the goal
@@ -100,6 +100,7 @@ class BFS_GameState:
                             if visited_list not in visited:
                                 visited.append(visited_list)
                                 queue.append(neighbor)
+                                print(neighbor.string_move)
         return None
     
     def generate_state(self, state):
@@ -129,7 +130,7 @@ def action(row, col, boxes, walls, move_ud, move_lr):
             new_box_col = box_col + move_lr
             
             # Check if the new box position is a wall
-            if [new_box_row, new_box_col] in walls and [new_box_row, new_box_col] in boxes:
+            if [new_box_row, new_box_col] in walls or [new_box_row, new_box_col] in boxes:
                 return False
             
             # Move the box

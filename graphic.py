@@ -402,13 +402,7 @@ class Actions(metaclass=SingletonMeta):
     """
     self.game_play = game_play
     self.data = game_play.map_data #Brings the data to the class
-    # Run BFS to test
-    player_position = self.game_play.player_position
-    boxes = self.game_play.boxes
-    walls = self.game_play.walls
-    goals = self.game_play.goals
 
-  
   def up(self):
     """
     Moves the player up
@@ -607,11 +601,10 @@ class Actions(metaclass=SingletonMeta):
       current = current >> 20 # To MB
       tracemalloc.stop()
 
-      # Get the node generated
-      node_counter = goal_state.node_counter
-
       # Move the player, init a new variable to make sure that string move is unmodified
       if goal_state is not None:
+        # Get the node generated
+        node_counter = goal_state.node_counter
         string_move = goal_state.string_move.lower()
         for character in string_move:
           time.sleep(0.5)
