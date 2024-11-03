@@ -1,3 +1,7 @@
+<<<<<<< HEAD
+Steps: 9, Weights: 3, Node: 9, Time (ms): 1144.1223621368408, Memory (MB): 1.00
+ururrddlL
+=======
 BFS: 
-Steps: 14, Weights: 13, Node: 0, Time (ms): 475.3680229187012, Memory (MB): 1.00
-uurrrdLLulDrdR
+Steps: 16, Weights: 695, Node: 0, Time (ms): 15158.92243385315, Memory (MB): 2.00
+uLulDrrRRRRRRurD
