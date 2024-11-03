@@ -219,7 +219,7 @@ class GamePlay(Frame, metaclass=SingletonMeta):
 
     # Exit button
     self.exitImage = PhotoImage(file = "Assets/exit.png")  
-    self.exitButton = Button(self, bg="#222a5c", image=self.exitImage, padx=0, pady=0, command = lambda : controller.show_frame(StartPage))
+    self.exitButton = Button(self, bg="#222a5c", image=self.exitImage, padx=0, pady=0, command = lambda : self.exit(controller))
     self.exitButton.place(x = 982, y = 82)
 
     # Restart button
@@ -227,6 +227,19 @@ class GamePlay(Frame, metaclass=SingletonMeta):
     self.restartButton = Button(self, bg="#222a5c", image=self.restartImage, padx=0, pady=0, command= lambda: self.action(filename='Testcase/' + filenames[chosenLevel-1]))
     self.restartButton.place(x = 982, y = 144)
   
+  def exit(self, controller):
+    try:
+      # Delete the action
+      Actions.get_instance(self).delete_instance()
+
+      # Reset the gameplay
+      self.reset_state()
+
+      # Change the frame
+      controller.show_frame(StartPage)
+    except Exception as e:
+      print(f"An error occurred while exiting: {e}")
+
   def change_pause_btn(self):
     if self.isPause:
       self.pauseButton.config(image=self.pauseImage)
@@ -278,7 +291,9 @@ class GamePlay(Frame, metaclass=SingletonMeta):
     # Initalize all the data and map
     self.load_file(filename)
     self.draw_map()
-    Actions.get_instance(self)
+    action = Actions.get_instance(self)
+    action.run_BFS()
+    print("done at GamePlay")
     # Run the action
 
   def draw_map(self):
@@ -333,8 +348,6 @@ class GamePlay(Frame, metaclass=SingletonMeta):
     """
     This function is called to load the data from text file
     """
-    # Clear previous data
-    self.reset_state()
     # Read the first line of the file and parse in a list
     try:
       with open(filename, "r") as file_map:
@@ -359,7 +372,6 @@ class GamePlay(Frame, metaclass=SingletonMeta):
     """
     if self.map_frame and self.map_frame.winfo_exists():
       for widget in self.map_frame.winfo_children():
-        print(widget)
         widget.destroy()
 
       self.map_frame.destroy()
@@ -388,7 +400,9 @@ class GamePlay(Frame, metaclass=SingletonMeta):
 
   @classmethod
   def get_instance(cls):
-    return cls() # Return the singleton instance
+    if cls._instances is None:
+      cls._instances = cls()  # Create a new instance if it doesn't exist
+    return cls._instances[cls]
   
 class Actions(metaclass=SingletonMeta):
   """
@@ -572,51 +586,66 @@ class Actions(metaclass=SingletonMeta):
 
   @classmethod
   def get_instance(cls, action):
-    if cls._instances.get(cls) is None:
-      tmp_action = cls._instances[cls] = cls(action)
+    if (cls in cls._instances):
+      # Return the instance
+      tmp_action = cls._instances[cls]
+    else:
+      # Create a new instance
+      tmp_action = cls(action)
+      cls._instances[cls] = tmp_action
+    return tmp_action
+  
+  def run_BFS(self):
+    # Bring the data to the class
+    gameplay = self.game_play
+    self.data = gameplay.map_data
 
-      tmp_action.data = tmp_action.game_play.map_data #Brings the data to the class
-      # Run BFS to test
-      player_position = tmp_action.game_play.player_position
-      boxes = tmp_action.game_play.boxes
-      walls = tmp_action.game_play.walls
-      goals = tmp_action.game_play.goals
+    # Allocate values to variables for BFS
+    player_position = gameplay.player_position
+    boxes = gameplay.boxes
+    walls = gameplay.walls
+    goals = gameplay.goals
       
-      bfs = a.BFS_GameState(player_position, boxes, goals, walls, None, "")
+    # Run the BFS
+    data = a.Initialized_data(walls, goals)
 
-      # Start measuring memory and time
-      tracemalloc.start()
-      start_time = time.time()
+    # Start measuring memory and time
+    tracemalloc.start()
+    start_time = time.time()
 
-      with concurrent.futures.ThreadPoolExecutor() as executor:
-        future = executor.submit(bfs.bfs)  # Run BFS in a separate thread
-        goal_state = future.result()  # Wait for BFS to complete
+    with concurrent.futures.ThreadPoolExecutor() as executor:
+      future = executor.submit(data.BFS, player_position, boxes)  # Run BFS in a separate thread
+      goal_state, node_counter = future.result()  # Wait for BFS to complete
 
-      # Stop measuring time and memory after BFS completes
-      end_time = time.time()
-      elapsed_time = (end_time - start_time)*1000
+    # Stop measuring time and memory after BFS completes
+    end_time = time.time()
+    elapsed_time = (end_time - start_time)*1000
 
-      # Get the current, peak memory usage
-      current, peak = tracemalloc.get_traced_memory()
-      current = current >> 20 # To MB
-      tracemalloc.stop()
+    # Get the current, peak memory usage
+    current, peak = tracemalloc.get_traced_memory()
+    current = current >> 20 # To MB
+    tracemalloc.stop()
 
-      # Move the player, init a new variable to make sure that string move is unmodified
-      if goal_state is not None:
-        # Get the node generated
-        node_counter = goal_state.node_counter
-        string_move = goal_state.string_move.lower()
-        for character in string_move:
-          time.sleep(0.5)
-          tmp_action.move_with_character(character)
+    # Move the player, init a new variable to make sure that string move is unmodified
+    if goal_state is not None:
+      # Get the node generated
+      string_move = goal_state.string_move.lower()
+      for character in string_move:
+        time.sleep(0.5)
+        self.move_with_character(character)
 
+      # Other resources
+      self.write_to_file("BFS: \n" +
+        f"Steps: {self.game_play.step_counter}, Weights: {self.game_play.weight_counter}," + 
+        f" Node: {node_counter}, Time (ms): {elapsed_time}, Memory (MB): {current:.2f}\n" +
+        goal_state.string_move)
 
-      if (goal_state is not None):
-        tmp_action.write_to_file("BFS: \n" +
-          f"Steps: {tmp_action.game_play.step_counter}, Weights: {tmp_action.game_play.weight_counter}," + 
-          f" Node: {node_counter}, Time (ms): {elapsed_time}, Memory (MB): {current:.2f}\n" +
-          goal_state.string_move)
-    return cls._instances[cls]
+    del data # Remove the reference after running
+
+  @classmethod
+  def delete_instance(cls):
+    if (cls in cls._instances):
+      del cls._instances[cls]
 
 # A function to write to the file the string of movement
   def write_to_file(self, content):

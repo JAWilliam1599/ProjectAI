@@ -2,32 +2,55 @@
 from collections import deque
 from multiprocessing import Manager, Pool
 
+data = None
+
+class Initialized_data:
+    """
+    This function is used to initialize data that is not changed during bfs, dfs, UCS, A*\n
+    This includes walls, goal_state
+    """
+    def __init__(self, walls, goal_state):
+        """
+        Walls is a list of list of row and column [[row, column], [row, column],...] representing the walls in the game\n
+        Goal state is a list of list of row and column [[row, column], [row, column],...]
+        """
+        self.walls = walls
+        self.goal_state = goal_state
+        self.node_count = 0
+
+    def BFS(self, player_position, boxes):
+        """
+        This function is used for BFS\n
+        :param player_position: Position of the player
+        :param boxes: Position of the boxes
+        :return: First BFS GameState object
+        """
+        # Initialize BFS
+        first_BFS = BFS_GameState(player_position, boxes)
+        return first_BFS.bfs(self)
+
+
 class BFS_GameState:
     """
     This is the class implement the game state using BFS\n
     BFS doesn't support weights
     """
-    def __init__(self, player_pos, boxes, goal_state, walls, path=None, string_move="", node_count=0):
+    def __init__(self, player_pos, boxes, string_move=""):
         """
-        Initialize the game state with player's position, boxes' positions, and goal state\n
-        Walls is a list of list of row and column [[row, column], [row, column],...] representing the walls in the game\n
+        Initialize the game state with player's position and string move\n
         Player's position is a list of row and column [row, column]\n
-        Boxes' positions is a list of list of row and column [[row, column], [row, column],...]\n
-        Goal state is a list of list of row and column [[row, column], [row, column],...]\n
+        String move is a string representation of the move (e.g., "RURU")\n
         """
         self.player_pos = player_pos
-        self.walls = walls # Make this global
-        self.boxes = boxes # Make this as a key value of dictionary as not frequently moved
-        self.goal_state = goal_state # Make this global also
+        self.boxes = boxes
         self.string_move = string_move  # Store the string representation of the move (e.g., "RURU")
-        self.path = path if path else [] # Remove this as we can use string_move, or reconstruct the path for further optimization
-        self.node_counter = node_count # Make this global to count the total number of node
 
-    def is_goal_state(self):
-        return self.goal_state == self.boxes  # Is the goal state is all the boxes is on the goal
+    def is_goal_state(self, goal_state):
+        # Check if all the boxes are on the goal
+        return goal_state == self.boxes # Is the goal state is all the boxes is on the goal
         
     
-    def get_neighbors(self):
+    def get_neighbors(self, data):
         """
         Get the possible next states after the player moves\n
         Returns a list of BFS_GameState objects
@@ -35,19 +58,16 @@ class BFS_GameState:
         row, col = self.player_pos
         directions = [(-1,0), (1,0), (0,-1), (0,1)] # Up, down, left, right
         neighbors = []
-        
+
         # Check up, down, left, right
         for r, c in directions:
             # Check if the next position is valid
             boxes = self.boxes.copy()
-            result = action(row, col, boxes, self.walls, r, c)
+            result = action(row, col, boxes, data, r, c)
             if (result):
                 # Create a new player position
                 new_row, new_col = row + r, col + c
                 new_players_position = [new_row, new_col]
-
-                # Create a new path by appending the current state to the path
-                new_path = self.path + [self]
 
                 # Update the string representation of the move
                 move_direction = ""
@@ -63,13 +83,14 @@ class BFS_GameState:
                 new_string_move = self.string_move + move_direction
 
                 # Create a new state
-                new_state = BFS_GameState(new_players_position, boxes, self.goal_state, self.walls, new_path, new_string_move, self.node_counter+1)
+                new_state = BFS_GameState(new_players_position, boxes, new_string_move)
+                data.node_count += 1 # Count all the nodes that being generated
                 neighbors.append(new_state)
             else: continue
 
         return neighbors
     
-    def bfs(self):
+    def bfs(self, data):
         """
         Breadth-first search algorithm to find the shortest path to the goal state
         """
@@ -85,11 +106,13 @@ class BFS_GameState:
 
                     # Check if in the batch, there is a goal state or not
                     for state in current_states:
-                        if state.is_goal_state(): 
+                        if state.is_goal_state(data.goal_state): 
                             print("done")
-                            return state
+                            queue.clear()
+                            print(data.node_count)
+                            return state, data.node_count
 
-                    results = pool.map(self.generate_state, current_states)
+                    results = pool.starmap(self.generate_state, [(state, data) for state in current_states])
 
                     for neighbors in results:
                         for neighbor in neighbors:
@@ -100,22 +123,22 @@ class BFS_GameState:
                             if visited_list not in visited:
                                 visited.append(visited_list)
                                 queue.append(neighbor)
-                                print(neighbor.string_move)
-        return None
+        return None, data.node_count
     
-    def generate_state(self, state):
+    def generate_state(self, state, data):
         """
         This function is only for multiprocessing
         """
-        return state.get_neighbors()
+        return state.get_neighbors(data)
 
-def action(row, col, boxes, walls, move_ud, move_lr):
+def action(row, col, boxes, data, move_ud, move_lr):
     """
     Move the player to the next position\n
     Returns 2 if the move and box is successful\n
     Returns 1 if the only move is successful\n
     Returns 0 if the move is not successful\n
     """
+    walls = data.walls
     new_player_row = row + move_ud
     new_player_col = col + move_lr
     # Check if the next position is a wall
