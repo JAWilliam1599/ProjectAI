@@ -29,6 +29,7 @@ class SingletonMeta(type):
           cls._instances[cls] = super().__call__(*args, **kwargs)
       return cls._instances[cls]
 
+chosenAlgo = 0
 chosenLevel = 1
 filenames = []
 # Iterate over all files in the folder
@@ -119,12 +120,12 @@ class StartPage(Frame, metaclass=SingletonMeta):
 
 
       # BFS button
-      self.bfsButton = Button(self, text="BFS", fg="white", bg="#222a5c", padx=50, pady=1, command= lambda: self.change_color(self.bfsButton))
+      self.bfsButton = Button(self, text="BFS", fg="white", bg="#222a5c", padx=50, pady=1, command= lambda: [self.change_color(self.bfsButton), self.choose_algo(1)])
       self.bfsButton.configure(font=("Helvetica", 12, "bold"))
       self.bfsButton.place(x = 700, y = 501)
 
       # DFS button
-      self.dfsButton = Button(self, text="DFS", fg="white", bg="#222a5c", padx=50, pady=1, command= lambda: self.change_color(self.dfsButton))
+      self.dfsButton = Button(self, text="DFS", fg="white", bg="#222a5c", padx=50, pady=1, command= lambda: [self.change_color(self.dfsButton), self.choose_algo(2)])
       self.dfsButton.configure(font=("Helvetica", 12, "bold"))
       self.dfsButton.place(x = 538, y = 501)
 
@@ -175,6 +176,10 @@ class StartPage(Frame, metaclass=SingletonMeta):
     if chosenLevel > 1:
       chosenLevel -= 1
       self.levelLabel.config(text=chosenLevel)
+  
+  def choose_algo(self, algo):
+    global chosenAlgo
+    chosenAlgo = algo
       
 class GamePlay(Frame, metaclass=SingletonMeta):   
   map_frame = None
@@ -292,7 +297,14 @@ class GamePlay(Frame, metaclass=SingletonMeta):
     self.load_file(filename)
     self.draw_map()
     action = Actions.get_instance(self)
-    action.run_BFS()
+    if chosenAlgo == 1:
+      print("BFS")
+      action.run_BFS()
+    elif chosenAlgo == 2:
+      print("DFS")
+      action.run_DFS()
+    else:
+      print("No algorithm selected")
     print("done at GamePlay")
     # Run the action
 
@@ -615,6 +627,53 @@ class Actions(metaclass=SingletonMeta):
 
     with concurrent.futures.ThreadPoolExecutor() as executor:
       future = executor.submit(data.BFS, player_position, boxes)  # Run BFS in a separate thread
+      goal_state, node_counter = future.result()  # Wait for BFS to complete
+
+    # Stop measuring time and memory after BFS completes
+    end_time = time.time()
+    elapsed_time = (end_time - start_time)*1000
+
+    # Get the current, peak memory usage
+    current, peak = tracemalloc.get_traced_memory()
+    current = current >> 20 # To MB
+    tracemalloc.stop()
+
+    # Move the player, init a new variable to make sure that string move is unmodified
+    if goal_state is not None:
+      # Get the node generated
+      string_move = goal_state.string_move.lower()
+      for character in string_move:
+        time.sleep(0.5)
+        self.move_with_character(character)
+
+      # Other resources
+      self.write_to_file("BFS: \n" +
+        f"Steps: {self.game_play.step_counter}, Weights: {self.game_play.weight_counter}," + 
+        f" Node: {node_counter}, Time (ms): {elapsed_time}, Memory (MB): {current:.2f}\n" +
+        goal_state.string_move)
+
+    del data # Remove the reference after running
+  
+  def run_DFS(self):
+    # Bring the data to the class
+    gameplay = self.game_play
+    self.data = gameplay.map_data
+
+    # Allocate values to variables for BFS
+    player_position = gameplay.player_position
+    boxes = gameplay.boxes
+    walls = gameplay.walls
+    goals = gameplay.goals
+      
+    # Run the BFS
+    data = a.Initialized_data(walls, goals)
+
+    # Start measuring memory and time
+    tracemalloc.start()
+    start_time = time.time()
+
+    with concurrent.futures.ThreadPoolExecutor() as executor:
+      future = executor.submit(data.DFS, player_position, boxes)  # Run BFS in a separate thread
       goal_state, node_counter = future.result()  # Wait for BFS to complete
 
     # Stop measuring time and memory after BFS completes

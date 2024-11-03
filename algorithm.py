@@ -28,8 +28,12 @@ class Initialized_data:
         # Initialize BFS
         first_BFS = BFS_GameState(player_position, boxes)
         return first_BFS.bfs(self)
+    
+    def DFS(self, player_position, boxes):
+        first_DFS = DFS_GameState(player_position, boxes)
+        return first_DFS.dfs(self)
 
-
+### BFS--------------------------------------------------------------------------------------------
 class BFS_GameState:
     """
     This is the class implement the game state using BFS\n
@@ -131,6 +135,109 @@ class BFS_GameState:
         """
         return state.get_neighbors(data)
 
+### DFS--------------------------------------------------------------------------------------------
+class DFS_GameState:
+    """
+    This is the class implement the game state using BFS\n
+    BFS doesn't support weights
+    """
+    def __init__(self, player_pos, boxes, string_move=""):
+        """
+        Initialize the game state with player's position and string move\n
+        Player's position is a list of row and column [row, column]\n
+        String move is a string representation of the move (e.g., "RURU")\n
+        """
+        self.player_pos = player_pos
+        self.boxes = boxes
+        self.string_move = string_move  # Store the string representation of the move (e.g., "RURU")
+
+    def is_goal_state(self, goal_state):
+        # Check if all the boxes are on the goal
+        return goal_state == self.boxes # Is the goal state is all the boxes is on the goal
+        
+    
+    def get_neighbors(self, data):
+        """
+        Get the possible next states after the player moves\n
+        Returns a list of BFS_GameState objects
+        """
+        row, col = self.player_pos
+        directions = [(-1,0), (1,0), (0,-1), (0,1)] # Up, down, left, right
+        neighbors = []
+
+        # Check up, down, left, right
+        for r, c in directions:
+            # Check if the next position is valid
+            boxes = self.boxes.copy()
+            result = action(row, col, boxes, data, r, c)
+            if (result):
+                # Create a new player position
+                new_row, new_col = row + r, col + c
+                new_players_position = [new_row, new_col]
+
+                # Update the string representation of the move
+                move_direction = ""
+                if r == -1: move_direction = "u"
+                elif r == 1: move_direction = "d"
+                elif c == -1: move_direction = "l"
+                elif c == 1: move_direction = "r"
+
+                # Check if a box is moved
+                if boxes != self.boxes:
+                    move_direction = move_direction.upper()  # Capitalize the move direction when a box is moved
+
+                new_string_move = self.string_move + move_direction
+
+                # Create a new state
+                new_state = DFS_GameState(new_players_position, boxes, new_string_move)
+                data.node_count += 1 # Count all the nodes that being generated
+                neighbors.append(new_state)
+            else: continue
+
+        return neighbors
+    
+    def dfs(self, data):
+        """
+        Breadth-first search algorithm to find the shortest path to the goal state
+        """
+        with Manager() as manager:
+            queue = deque([self])
+            visited = manager.list() # Create a visited set
+            visited.append([self.player_pos, self.boxes])
+
+            with Pool(processes=16) as pool:
+                while queue:
+                    batch_size = min(len(queue), 16)
+                    current_states = [queue.pop() for _ in range(batch_size)]
+
+                    # Check if in the batch, there is a goal state or not
+                    for state in current_states:
+                        if state.is_goal_state(data.goal_state): 
+                            print("done")
+                            queue.clear()
+                            print(data.node_count)
+                            return state, data.node_count
+
+                    results = pool.starmap(self.generate_state, [(state, data) for state in current_states])
+
+                    for neighbors in results:
+                        for neighbor in neighbors:
+                            if neighbor is None: continue
+
+                            # Only add the neighbor to the visited list if it hasn't been added yet
+                            visited_list = [neighbor.player_pos, neighbor.boxes]
+                            if visited_list not in visited:
+                                visited.append(visited_list)
+                                queue.append(neighbor)
+                                print(neighbor.string_move)
+        return None, data.node_count
+    
+    def generate_state(self, state, data):
+        """
+        This function is only for multiprocessing
+        """
+        return state.get_neighbors(data)
+### Action-----------------------------------------------------------------------------------------
 def action(row, col, boxes, data, move_ud, move_lr):
     """
     Move the player to the next position\n
