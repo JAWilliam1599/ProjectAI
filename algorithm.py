@@ -1,9 +1,10 @@
-# BFS
 from collections import deque
 from multiprocessing import Manager, Pool
+import concurrent.futures
+import threading
 
 data = None
-
+### Data--------------------------------------------------------------------------------------------
 class Initialized_data:
     """
     This function is used to initialize data that is not changed during bfs, dfs, UCS, A*\n
@@ -33,13 +34,45 @@ class Initialized_data:
         first_DFS = DFS_GameState(player_position, boxes)
         return first_DFS.dfs(self)
 
+### Manager-----------------------------------------------------------------------------------------
+class Manager_Algorithm:
+    def __init__(self, data):
+        """
+        Initialize the Manager\n
+        :param data: Initialized_data object
+        """
+        self.shared_stop_event = threading.Event()
+        self.data = data
+        self.manager = Manager()
+        self.shared_visited_list = self.manager.list()
+
+    def run_bfs(self, player_position, boxes):
+        """
+        This method is used for BFS\n
+        :param player_position: Position of the player
+        :param boxes: Position of the boxes
+        :return: the goal state and the number of nodes explored
+        """
+        game_state = BFS_GameState(player_position, boxes, self.shared_visited_list)
+        with concurrent.futures.ThreadPoolExecutor() as executor:
+            future = executor.submit(game_state.bfs, self.data, self.shared_stop_event)
+            goal_state, node_counter = future.result()  # Wait for BFS to complete
+            return goal_state, node_counter
+
+    def stop(self):
+        """
+        This function is called to stop all the algorithms
+        """
+        self.shared_stop_event.set()  # Signal all GameStates to stop
+
+
 ### BFS--------------------------------------------------------------------------------------------
 class BFS_GameState:
     """
     This is the class implement the game state using BFS\n
     BFS doesn't support weights
     """
-    def __init__(self, player_pos, boxes, string_move=""):
+    def __init__(self, player_pos, boxes, visited, string_move=""):
         """
         Initialize the game state with player's position and string move\n
         Player's position is a list of row and column [row, column]\n
@@ -48,6 +81,7 @@ class BFS_GameState:
         self.player_pos = player_pos
         self.boxes = boxes
         self.string_move = string_move  # Store the string representation of the move (e.g., "RURU")
+        self.visited = visited
 
     def is_goal_state(self, goal_state):
         # Check if all the boxes are on the goal
@@ -94,39 +128,40 @@ class BFS_GameState:
 
         return neighbors
     
-    def bfs(self, data):
+    def bfs(self, data, shared_stop_event):
         """
         Breadth-first search algorithm to find the shortest path to the goal state
         """
-        with Manager() as manager:
-            queue = deque([self])
-            visited = manager.list() # Create a visited set
-            visited.append([self.player_pos, self.boxes])
+        queue = deque([self])
 
+        # Use the shared list
+        self.visited.append((self.player_pos, tuple(self.boxes)))
+
+        while not shared_stop_event.is_set() and queue:
+            batch_size = min(len(queue), 16)
+            current_states = [queue.popleft() for _ in range(batch_size)]
+
+            # Check if in the batch, there is a goal state or not
+            for state in current_states:
+                if state.is_goal_state(data.goal_state): 
+                    print("done")
+                    queue.clear()
+                    print(data.node_count)
+                    return state, data.node_count
+            
             with Pool(processes=16) as pool:
-                while queue:
-                    batch_size = min(len(queue), 16)
-                    current_states = [queue.popleft() for _ in range(batch_size)]
+                results = pool.starmap(self.generate_state, [(state, data) for state in current_states])
 
-                    # Check if in the batch, there is a goal state or not
-                    for state in current_states:
-                        if state.is_goal_state(data.goal_state): 
-                            print("done")
-                            queue.clear()
-                            print(data.node_count)
-                            return state, data.node_count
+            for neighbors in results:
+                for neighbor in neighbors:
+                    if neighbor is None: continue
 
-                    results = pool.starmap(self.generate_state, [(state, data) for state in current_states])
-
-                    for neighbors in results:
-                        for neighbor in neighbors:
-                            if neighbor is None: continue
-
-                            # Only add the neighbor to the visited list if it hasn't been added yet
-                            visited_list = [neighbor.player_pos, neighbor.boxes]
-                            if visited_list not in visited:
-                                visited.append(visited_list)
-                                queue.append(neighbor)
+                    # Only add the neighbor to the visited list if it hasn't been added yet
+                    visited_list = [neighbor.player_pos, neighbor.boxes]
+                    if visited_list not in self.visited:
+                        self.visited.append(visited_list)
+                        queue.append(neighbor)
+                        print(neighbor.string_move)
         return None, data.node_count
     
     def generate_state(self, state, data):
