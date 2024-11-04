@@ -229,13 +229,17 @@ class GamePlay(Frame, metaclass=SingletonMeta):
 
     # Restart button
     self.restartImage = PhotoImage(file = "Assets/restart.png") 
-    self.restartButton = Button(self, bg="#222a5c", image=self.restartImage, padx=0, pady=0, command= lambda: self.action(filename='Testcase/' + filenames[chosenLevel-1]))
+    self.restartButton = Button(self, bg="#222a5c", image=self.restartImage, padx=0, pady=0, command= lambda: self.restart(filename='Testcase/' + filenames[chosenLevel-1]))
     self.restartButton.place(x = 982, y = 144)
   
   def exit(self, controller):
     try:
       # Delete the action
-      Actions.get_instance(self).delete_instance()
+      action = Actions.get_instance(self)
+      if hasattr(action, 'manager'):
+        action.manager.shutdown()
+
+      action.delete_instance()
 
       # Reset the gameplay
       self.reset_state()
@@ -245,6 +249,24 @@ class GamePlay(Frame, metaclass=SingletonMeta):
     except Exception as e:
       print(f"An error occurred while exiting: {e}")
 
+  def restart(self, filename):
+    try:
+      # Delete the action
+      action = Actions.get_instance(self)
+      if hasattr(action, 'manager'):
+        action.manager.stop()
+
+      action.delete_instance()
+
+      # Reset the gameplay
+      self.reset_state()
+
+      # Call the action
+      self.action(filename)
+
+    except Exception as e:
+      print(f"An error occurred while restarting: {e}")
+
   def change_pause_btn(self):
     if self.isPause:
       self.pauseButton.config(image=self.pauseImage)
@@ -252,6 +274,9 @@ class GamePlay(Frame, metaclass=SingletonMeta):
     else:
       self.pauseButton.config(image=self.startImage)
       self.isPause = True
+
+    action = Actions.get_instance(self)
+    action.pause()
 
   def create_player_on_canvas(self, row_index, column_index):
       # Create Canvas for player
@@ -428,6 +453,7 @@ class Actions(metaclass=SingletonMeta):
     """
     self.game_play = game_play
     self.data = game_play.map_data #Brings the data to the class
+    self.isPause = True
 
   def up(self):
     """
@@ -617,17 +643,17 @@ class Actions(metaclass=SingletonMeta):
     boxes = gameplay.boxes
     walls = gameplay.walls
     goals = gameplay.goals
-      
-    # Run the BFS
-    data = a.Initialized_data(walls, goals)
-
+    
     # Start measuring memory and time
     tracemalloc.start()
     start_time = time.time()
+    
+    # Initialize the data for BFS
+    data = a.Initialized_data(walls, goals)
 
-    with concurrent.futures.ThreadPoolExecutor() as executor:
-      future = executor.submit(data.BFS, player_position, boxes)  # Run BFS in a separate thread
-      goal_state, node_counter = future.result()  # Wait for BFS to complete
+    # Initialize a manager
+    self.manager = a.Manager_Algorithm(data=data)
+    goal_state, node_counter = self.manager.run_bfs(player_position, boxes)
 
     # Stop measuring time and memory after BFS completes
     end_time = time.time()
@@ -673,8 +699,8 @@ class Actions(metaclass=SingletonMeta):
     start_time = time.time()
 
     with concurrent.futures.ThreadPoolExecutor() as executor:
-      future = executor.submit(data.DFS, player_position, boxes)  # Run BFS in a separate thread
-      goal_state, node_counter = future.result()  # Wait for BFS to complete
+      future = executor.submit(data.DFS, player_position, boxes)  # Run DFS in a separate thread
+      goal_state, node_counter = future.result()  # Wait for DFS to complete
 
     # Stop measuring time and memory after BFS completes
     end_time = time.time()
@@ -689,9 +715,14 @@ class Actions(metaclass=SingletonMeta):
     if goal_state is not None:
       # Get the node generated
       string_move = goal_state.string_move.lower()
-      for character in string_move:
+      string_length = len(string_move)
+      i = 0
+      while i < string_length:
         time.sleep(0.5)
-        self.move_with_character(character)
+        if (self.isPause): continue
+
+        self.move_with_character(string_move[i])
+        i += 1
 
       # Other resources
       self.write_to_file("BFS: \n" +
@@ -701,6 +732,8 @@ class Actions(metaclass=SingletonMeta):
 
     del data # Remove the reference after running
 
+  def pause(self):
+    self.isPause = not self.isPause
   @classmethod
   def delete_instance(cls):
     if (cls in cls._instances):
