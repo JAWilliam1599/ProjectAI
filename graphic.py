@@ -130,12 +130,12 @@ class StartPage(Frame, metaclass=SingletonMeta):
       self.dfsButton.place(x = 538, y = 501)
 
       # UCS button
-      self.ucsButton = Button(self, text="UCS", fg="white", bg="#222a5c", padx=50, pady=1,  command= lambda: self.change_color(self.ucsButton))
+      self.ucsButton = Button(self, text="UCS", fg="white", bg="#222a5c", padx=50, pady=1,  command= lambda: [self.change_color(self.ucsButton), self.choose_algo(3)])
       self.ucsButton.configure(font=("Helvetica", 12, "bold"))
       self.ucsButton.place(x = 376, y = 501)
 
       # A* button
-      self.astarButton = Button(self, text="A*", fg="white", bg="#222a5c", padx=58, pady=1,  command= lambda: self.change_color(self.astarButton))
+      self.astarButton = Button(self, text="A*", fg="white", bg="#222a5c", padx=58, pady=1,  command= lambda: [self.change_color(self.astarButton), self.choose_algo(4)])
       self.astarButton.configure(font=("Helvetica", 12, "bold"))
       self.astarButton.place(x = 215, y = 501)
 
@@ -190,6 +190,7 @@ class GamePlay(Frame, metaclass=SingletonMeta):
   player_position = []
   # Create a dict to store all canvas created
   map_objects = {} 
+  
 
   # Create some objects to parse in BFS
   walls = [] # A list positions of walls
@@ -323,13 +324,20 @@ class GamePlay(Frame, metaclass=SingletonMeta):
     self.draw_map()
     action = Actions.get_instance(self)
     if chosenAlgo == 1:
-      print("BFS")
-      action.run_BFS()
+        print("BFS")
+        action.run_BFS()
     elif chosenAlgo == 2:
-      print("DFS")
-      action.run_DFS()
+        print("DFS")
+        action.run_DFS()
+    elif chosenAlgo == 3:
+        print("UCS")
+        #action.run_UCS()  #nho uncomment nha H
+    elif chosenAlgo == 4:
+        print("A*")
+        action.run_astar()  
     else:
-      print("No algorithm selected")
+        print("No algorithm selected")
+
     print("done at GamePlay")
     # Run the action
 
@@ -391,7 +399,7 @@ class GamePlay(Frame, metaclass=SingletonMeta):
         file_map = open(filename, "r")
 
         each_rock = file_map.readline().split()
-        self.list_rocks_weight.extend(each_rock)
+        self.list_rocks_weight = [int(weight) for weight in each_rock]
 
         # Read the whole file for a map
         for line in file_map:
@@ -731,6 +739,61 @@ class Actions(metaclass=SingletonMeta):
         goal_state.string_move)
 
     del data # Remove the reference after running
+
+
+  def run_astar(self):
+      # Bring the data to the class
+      gameplay = self.game_play
+      self.data = gameplay.map_data
+
+      # Allocate values to variables for A*
+      player_position = gameplay.player_position
+      boxes = gameplay.boxes
+      walls = gameplay.walls
+      goals = gameplay.goals
+      stone_weights = gameplay.list_rocks_weight  # Assuming stone weights are available
+      
+      # Start measuring memory and time
+      tracemalloc.start()
+      start_time = time.time()
+      
+      # Initialize the data for A* (goal state and walls)
+      data = a.Initialized_data(walls, goals)
+
+      with concurrent.futures.ThreadPoolExecutor() as executor:
+        future = executor.submit(data.AStar, player_position, boxes, stone_weights)  
+        goal_state, node_counter = future.result()  # Wait 
+
+
+      # Stop measuring time and memory after A* completes
+      end_time = time.time()
+      elapsed_time = (end_time - start_time) * 1000  # Time in milliseconds
+
+      # Get the current, peak memory usage
+      current, peak = tracemalloc.get_traced_memory()
+      current = current >> 20  # Convert to MB
+      tracemalloc.stop()
+
+      if goal_state is not None:
+        # Get the node generated
+        string_move = goal_state.string_move.lower()
+        string_length = len(string_move)
+        i = 0
+        while i < string_length:
+          time.sleep(0.5)
+          if (self.isPause): continue
+
+          self.move_with_character(string_move[i])
+          i += 1
+
+        # Other resources
+        self.write_to_file("BFS: \n" +
+          f"Steps: {self.game_play.step_counter}, Weights: {self.game_play.weight_counter}," + 
+          f" Node: {node_counter}, Time (ms): {elapsed_time}, Memory (MB): {current:.2f}\n" +
+          goal_state.string_move)
+
+      del data # Remove the reference after running
+
 
   def pause(self):
     self.isPause = not self.isPause

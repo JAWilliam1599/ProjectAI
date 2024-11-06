@@ -2,6 +2,9 @@ from collections import deque
 from multiprocessing import Manager, Pool
 import concurrent.futures
 import threading
+import heapq
+import math
+import itertools
 
 data = None
 ### Data--------------------------------------------------------------------------------------------
@@ -19,6 +22,19 @@ class Initialized_data:
         self.goal_state = goal_state
         self.node_count = 0
 
+
+    def _initialize_stone_positions_to_weights(self):
+        """
+        Creates a dictionary that maps each box position to its corresponding weight.
+        :return: Dictionary mapping box positions to weights.
+        """
+        if len(self.boxes) != len(self.stone_weights):
+            raise ValueError("The number of boxes must match the number of stone weights.")
+        
+        # Create the mapping from box position to weight
+        return {self.boxes[i]: self.stone_weights[i] for i in range(len(self.boxes))}
+
+
     def BFS(self, player_position, boxes):
         """
         This function is used for BFS\n
@@ -33,6 +49,20 @@ class Initialized_data:
     def DFS(self, player_position, boxes):
         first_DFS = DFS_GameState(player_position, boxes)
         return first_DFS.dfs(self)
+    
+    def AStar(self, player_position, boxes, stone_weights):
+        """
+        This function is used for A* search.
+        :param player_position: Position of the player
+        :param boxes: Position of the boxes
+        :param stone_weights: List of stone weights
+        :return: Solution path and node count from A* search
+        """
+        boxes = [tuple(box) if isinstance(box, list) else box for box in boxes]
+
+        stone_positions_to_weights = {box : weight for box, weight in zip(boxes, stone_weights)}
+        astar_solver = AStar(self, player_position, boxes, stone_positions_to_weights)
+        return astar_solver.search()
 
 ### Manager-----------------------------------------------------------------------------------------
 class Manager_Algorithm:
@@ -59,6 +89,24 @@ class Manager_Algorithm:
             goal_state, node_counter = future.result()  # Wait for BFS to complete
             return goal_state, node_counter
 
+    def run_astar(self, player_position, boxes, stone_weights):
+        """
+        This method is used for A* search
+        :param player_position: Position of the player
+        :param boxes: Position of the boxes
+        :param stone_weights: List of stone weights
+        :return: the solution path and number of nodes explored from A* search
+        """
+        # Initialize A* GameState for A* search
+        astar_game_state = AStar_GameState(player_position, boxes, stone_weights, self.data.walls, self.data.goal_state)
+
+        # Run A* search using ThreadPoolExecutor to handle asynchronous execution
+        with concurrent.futures.ThreadPoolExecutor() as executor:
+            future = executor.submit(astar_game_state.search)
+            solution_path, nodes_explored = future.result()  # Wait for A* to complete
+
+        return solution_path, nodes_explored
+    
     def stop(self):
         """
         This function is called to stop all the algorithms
@@ -272,7 +320,129 @@ class DFS_GameState:
         This function is only for multiprocessing
         """
         return state.get_neighbors(data)
+
+
+### A*---------------------------------------------------------------------------------------------
+class AStar_GameState:
+    def __init__(self, player_position, boxes, stone_positions_to_weights, walls, goal_state, parent=None, string_move=""):
+        """
+        Initialize the game state with player's position, boxes, stone weights, and the move string
+        """
+        self.player_position = player_position
+        self.boxes = boxes  # List of box positions
+        self.stone_positions_to_weights = stone_positions_to_weights  # Mapping of box positions to stone weights
+        self.walls = walls
+        self.goal_state = goal_state
+        self.parent = parent  # For path reconstruction
+        self.string_move = string_move  # The string representation of the move sequence (e.g., "RURU")
+        self.g = 0  # Path cost
+        self.h = self.heuristic()  # Heuristic
+        self.f = self.g + self.h  # Total cost
+
+    def heuristic(self):
+        """
+        Heuristic function for A*.
+        In this case, we will calculate the sum of Manhattan distances between each box and its closest goal.
+        The distance is weighted by the stone weight.
+        """
+        total_distance = 0
+        for box in self.boxes:
+            weight = self.stone_positions_to_weights.get(box, 1)  # Default weight of 1 if the box has no weight
+            min_distance = float('inf')
+            for goal in self.goal_state:
+                distance = abs(box[0] - goal[0]) + abs(box[1] - goal[1])  # Manhattan distance
+                min_distance = min(min_distance, distance)
+            total_distance += min_distance * weight  # Weighted distance
+        return total_distance
+
+    def is_goal(self):
+        """
+        Check if all boxes are on the goal locations.
+        """
+        return all(box in self.goal_state for box in self.boxes)
+
+    def get_neighbors(self):
+        """
+        Generate possible next states by moving or pushing stones.
+        """
+        neighbors = []
+        row, col = self.player_position
+        directions = [(-1, 0, "u"), (1, 0, "d"), (0, -1, "l"), (0, 1, "r")]  # up, down, left, right
+        
+        # Check the possible directions for movement
+        for r, c, move in directions:
+            # Check if the next position is valid
+            new_row, new_col = row + r, col + c
+            if (new_row, new_col) in self.walls:  # If it's a wall, skip it
+                continue
+
+            # Check if the new position is a box and push it
+            if (new_row, new_col) in self.boxes:
+                new_box_index = self.boxes.index((new_row, new_col))
+                new_box_position = (self.boxes[new_box_index][0] + r, self.boxes[new_box_index][1] + c)
+                if new_box_position not in self.walls and new_box_position not in self.boxes:
+                    # Create a new list of boxes by pushing the box
+                    new_boxes = self.boxes[:]
+                    new_boxes[new_box_index] = new_box_position
+                    # Update the string move to include the new move (capitalize the move when pushing a box)
+                    new_string_move = self.string_move + move.upper()
+                    neighbors.append(AStar_GameState((new_row, new_col), new_boxes, self.stone_positions_to_weights, self.walls, self.goal_state, self, new_string_move))
+
+            # Otherwise, just move the player without pushing a box
+            else:
+                new_string_move = self.string_move + move  # Lowercase for player-only movement
+                neighbors.append(AStar_GameState((new_row, new_col), self.boxes, self.stone_positions_to_weights, self.walls, self.goal_state, self, new_string_move))
+
+        return neighbors
+
+    def __lt__(self, other):
+        # For priority queue: compare based on total cost f = g + h
+        return self.f < other.f
+
+    def __repr__(self):
+        return f"Player: {self.player_position}, Boxes: {self.boxes}, f: {self.f}, Moves: {self.string_move}"
+
+class AStar:
+    def __init__(self, data, start_player_position, start_boxes, stone_positions_to_weights):
+        self.data = data
+        self.start_player_position = start_player_position
+        self.start_boxes = start_boxes
+        self.stone_positions_to_weights = stone_positions_to_weights
+        self.visited = set()
+        self.goal_state = data.goal_state
+        self.walls = data.walls
+
+    def search(self):
+        """
+        Perform A* search to solve the Sokoban puzzle.
+        """
+        # Initialize the starting state
+        start_state = AStar_GameState(self.start_player_position, self.start_boxes, self.stone_positions_to_weights, self.walls, self.goal_state, string_move="")
+        
+        # Priority queue for A* search
+        open_list = []
+        heapq.heappush(open_list, start_state)
+        self.visited.add(tuple(start_state.boxes))
+
+        while open_list:
+            current_state = heapq.heappop(open_list)
+            if current_state.is_goal():
+                # Return both the solution (string_move) and node count
+                return current_state, len(self.visited)
+
+            for neighbor in current_state.get_neighbors():
+                if tuple(neighbor.boxes) not in self.visited:
+                    self.visited.add(tuple(neighbor.boxes))
+                    heapq.heappush(open_list, neighbor)
+                    print(neighbor.string_move)
+
+        return None, len(self.visited)  # If no solution
+
+
+
+
 ### Action-----------------------------------------------------------------------------------------
+
 def action(row, col, boxes, data, move_ud, move_lr):
     """
     Move the player to the next position\n
