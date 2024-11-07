@@ -758,10 +758,10 @@ class Actions(metaclass=SingletonMeta):
       start_time = time.time()
       
       # Initialize the data for A* (goal state and walls)
-      data = a.Initialized_data(walls, goals)
+      data = a.Initialized_data(walls, goals, stone_weights)
 
       with concurrent.futures.ThreadPoolExecutor() as executor:
-        future = executor.submit(data.AStar, player_position, boxes, stone_weights)  
+        future = executor.submit(data.AStar, player_position, boxes)  
         goal_state, node_counter = future.result()  # Wait 
 
 

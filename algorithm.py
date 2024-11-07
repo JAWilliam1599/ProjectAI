@@ -13,26 +13,15 @@ class Initialized_data:
     This function is used to initialize data that is not changed during bfs, dfs, UCS, A*\n
     This includes walls, goal_state
     """
-    def __init__(self, walls, goal_state):
+    def __init__(self, walls, goal_state, stone_weights = None):
         """
         Walls is a list of list of row and column [[row, column], [row, column],...] representing the walls in the game\n
         Goal state is a list of list of row and column [[row, column], [row, column],...]
         """
         self.walls = walls
         self.goal_state = goal_state
+        self.stone_weights = stone_weights
         self.node_count = 0
-
-
-    def _initialize_stone_positions_to_weights(self):
-        """
-        Creates a dictionary that maps each box position to its corresponding weight.
-        :return: Dictionary mapping box positions to weights.
-        """
-        if len(self.boxes) != len(self.stone_weights):
-            raise ValueError("The number of boxes must match the number of stone weights.")
-        
-        # Create the mapping from box position to weight
-        return {self.boxes[i]: self.stone_weights[i] for i in range(len(self.boxes))}
 
 
     def BFS(self, player_position, boxes):
@@ -50,7 +39,7 @@ class Initialized_data:
         first_DFS = DFS_GameState(player_position, boxes)
         return first_DFS.dfs(self)
     
-    def AStar(self, player_position, boxes, stone_weights):
+    def AStar(self, player_position, boxes):
         """
         This function is used for A* search.
         :param player_position: Position of the player
@@ -58,10 +47,7 @@ class Initialized_data:
         :param stone_weights: List of stone weights
         :return: Solution path and node count from A* search
         """
-        boxes = [tuple(box) if isinstance(box, list) else box for box in boxes]
-
-        stone_positions_to_weights = {box : weight for box, weight in zip(boxes, stone_weights)}
-        astar_solver = AStar(self, player_position, boxes, stone_positions_to_weights)
+        astar_solver = AStar(player_position, boxes, self.stone_weights, self)
         return astar_solver.search()
 
 ### Manager-----------------------------------------------------------------------------------------
@@ -323,123 +309,156 @@ class DFS_GameState:
 
 
 ### A*---------------------------------------------------------------------------------------------
+
 class AStar_GameState:
-    def __init__(self, player_position, boxes, stone_positions_to_weights, walls, goal_state, parent=None, string_move=""):
+    def __init__(self, player_pos, boxes, string_move="", g_cost=0, parent=None, data=None):
         """
-        Initialize the game state with player's position, boxes, stone weights, and the move string
+        Initialize the game state with player's position, boxes, g-cost, and parent reference.
         """
-        self.player_position = player_position
-        self.boxes = boxes  # List of box positions
-        self.stone_positions_to_weights = stone_positions_to_weights  # Mapping of box positions to stone weights
-        self.walls = walls
-        self.goal_state = goal_state
-        self.parent = parent  # For path reconstruction
-        self.string_move = string_move  # The string representation of the move sequence (e.g., "RURU")
-        self.g = 0  # Path cost
-        self.h = self.heuristic()  # Heuristic
-        self.f = self.g + self.h  # Total cost
-
-    def heuristic(self):
-        """
-        Heuristic function for A*.
-        In this case, we will calculate the sum of Manhattan distances between each box and its closest goal.
-        The distance is weighted by the stone weight.
-        """
-        total_distance = 0
-        for box in self.boxes:
-            weight = self.stone_positions_to_weights.get(box, 1)  # Default weight of 1 if the box has no weight
-            min_distance = float('inf')
-            for goal in self.goal_state:
-                distance = abs(box[0] - goal[0]) + abs(box[1] - goal[1])  # Manhattan distance
-                min_distance = min(min_distance, distance)
-            total_distance += min_distance * weight  # Weighted distance
-        return total_distance
-
-    def is_goal(self):
-        """
-        Check if all boxes are on the goal locations.
-        """
-        return all(box in self.goal_state for box in self.boxes)
-
-    def get_neighbors(self):
-        """
-        Generate possible next states by moving or pushing stones.
-        """
-        neighbors = []
-        row, col = self.player_position
-        directions = [(-1, 0, "u"), (1, 0, "d"), (0, -1, "l"), (0, 1, "r")]  # up, down, left, right
+        self.player_pos = player_pos
+        self.boxes = boxes
+        self.string_move = string_move  # Move string (e.g., "RURU")
+        self.g_cost = g_cost  # Cost to reach this state
+        self.parent = parent  # Parent node for path reconstruction
+        self.data = data  # Reference to Initialized_data instance
         
-        # Check the possible directions for movement
-        for r, c, move in directions:
-            # Check if the next position is valid
+        # Calculate heuristic cost to the goal state (h_cost)
+        self.h_cost = self.calculate_heuristic(self, self.data.goal_state)
+
+        # Calculate the total cost (f_cost = g_cost + h_cost)
+        self.f_cost = self.g_cost + self.h_cost
+
+    def is_goal_state(self, goal_state):
+        """
+        Check if all the boxes are on the goal positions.
+        """
+        return self.boxes == goal_state
+
+    def get_neighbors(self, data):
+        """
+        Get possible next states after the player moves and pushes boxes.
+        Returns a list of AStar_GameState objects.
+        """
+        directions = [(-1, 0, "u"), (1, 0, "d"), (0, -1, "l"), (0, 1, "r")]
+
+        row, col = self.player_pos
+        neighbors = []
+
+        for r, c, move_direction in directions:
+            # Calculate new player position
             new_row, new_col = row + r, col + c
-            if (new_row, new_col) in self.walls:  # If it's a wall, skip it
+
+            # Check if the next position is a wall
+            if (new_row, new_col) in data.walls:  # Skip if it's a wall
                 continue
 
-            # Check if the new position is a box and push it
-            if (new_row, new_col) in self.boxes:
-                new_box_index = self.boxes.index((new_row, new_col))
-                new_box_position = (self.boxes[new_box_index][0] + r, self.boxes[new_box_index][1] + c)
-                if new_box_position not in self.walls and new_box_position not in self.boxes:
-                    # Create a new list of boxes by pushing the box
-                    new_boxes = self.boxes[:]
-                    new_boxes[new_box_index] = new_box_position
-                    # Update the string move to include the new move (capitalize the move when pushing a box)
-                    new_string_move = self.string_move + move.upper()
-                    neighbors.append(AStar_GameState((new_row, new_col), new_boxes, self.stone_positions_to_weights, self.walls, self.goal_state, self, new_string_move))
+            # Try to move in the direction
+            boxes = self.boxes.copy()
+            result = action(row, col, boxes, data, r, c)
+            if result:
+                new_player_pos = [new_row, new_col]
 
-            # Otherwise, just move the player without pushing a box
-            else:
-                new_string_move = self.string_move + move  # Lowercase for player-only movement
-                neighbors.append(AStar_GameState((new_row, new_col), self.boxes, self.stone_positions_to_weights, self.walls, self.goal_state, self, new_string_move))
+                # If a box is moved, capitalize the move direction
+                if boxes != self.boxes:
+                    move_direction = move_direction.upper()
+
+                # Calculate the g-cost (the new cost incurred for this move)
+                move_cost = self.calculate_move_cost(boxes, data)
+                new_g_cost = self.g_cost + move_cost
+
+                # Create the new string of moves
+                new_string_move = self.string_move + move_direction
+
+                # Create a new state
+                new_state = AStar_GameState(new_player_pos, boxes, new_string_move, new_g_cost, self, data)
+
+                # Calculate the heuristic (h-cost)
+                h_cost = new_state.calculate_heuristic(new_state, data.goal_state)
+
+                # Calculate the f-cost
+                f_cost = new_g_cost + h_cost
+
+                # Add the new state to the neighbors list
+                neighbors.append((f_cost, new_state))
 
         return neighbors
 
-    def __lt__(self, other):
-        # For priority queue: compare based on total cost f = g + h
-        return self.f < other.f
+    def calculate_move_cost(self, boxes, data):
+        """
+        Calculate the cost of the current move based on the weight of the box being pushed.
+        """
+        move_cost = 1  # Base cost of moving (without pushing a box)
+        if boxes != self.boxes:  # If a box was moved
+            # Find which box was moved and add its weight to the cost
+            for i, box in enumerate(boxes):
+                if box != self.boxes[i]:  # If the box position changed
+                    move_cost += data.stone_weights[i]  # Add the weight of the moved box
+        return move_cost
 
-    def __repr__(self):
-        return f"Player: {self.player_position}, Boxes: {self.boxes}, f: {self.f}, Moves: {self.string_move}"
+    def calculate_heuristic(self, state, goal_state):
+        """
+        Calculate the heuristic using the Manhattan distance for each box.
+        """
+        heuristic = 0
+        for i, box in enumerate(state.boxes):
+            goal_pos = goal_state[i]  # The goal position for the i-th box
+            heuristic += abs(box[0] - goal_pos[0]) + abs(box[1] - goal_pos[1])
+        return heuristic
+    
+    def __lt__(self, other):
+        """
+        Compare two game states for priority queue sorting.
+        States with lower f_cost are given higher priority.
+        """
+        return self.f_cost < other.f_cost
 
 class AStar:
-    def __init__(self, data, start_player_position, start_boxes, stone_positions_to_weights):
-        self.data = data
-        self.start_player_position = start_player_position
+    def __init__(self, start_player_pos, start_boxes, stone_weights, data):
+        self.start_player_pos = start_player_pos
         self.start_boxes = start_boxes
-        self.stone_positions_to_weights = stone_positions_to_weights
-        self.visited = set()
-        self.goal_state = data.goal_state
-        self.walls = data.walls
+        self.data = data  # Reference to Initialized_data instance
+        self.open_list = []  # Min-heap priority queue
+        self.closed_set = set()  # Explored states
+        self.node_count = 0  # Number of nodes explored
+
+        # Initialize the start node (initial state)
+        start_node = AStar_GameState(start_player_pos, start_boxes, "", 0, None, data)
+        heapq.heappush(self.open_list, (0, start_node))
 
     def search(self):
         """
-        Perform A* search to solve the Sokoban puzzle.
+        Perform A* search to find the optimal path.
         """
-        # Initialize the starting state
-        start_state = AStar_GameState(self.start_player_position, self.start_boxes, self.stone_positions_to_weights, self.walls, self.goal_state, string_move="")
-        
-        # Priority queue for A* search
-        open_list = []
-        heapq.heappush(open_list, start_state)
-        self.visited.add(tuple(start_state.boxes))
+        while self.open_list:
+            # Get the state with the lowest f-cost
+            f_cost, current_state = heapq.heappop(self.open_list)
 
-        while open_list:
-            current_state = heapq.heappop(open_list)
-            if current_state.is_goal():
-                # Return both the solution (string_move) and node count
-                return current_state, len(self.visited)
+            # If we reach the goal state, return the solution (string_move) and node count
+            if current_state.is_goal_state(self.data.goal_state):
+                print("Goal reached!")
+                return current_state, self.node_count  # Return both the solution and node count
 
-            for neighbor in current_state.get_neighbors():
-                if tuple(neighbor.boxes) not in self.visited:
-                    self.visited.add(tuple(neighbor.boxes))
-                    heapq.heappush(open_list, neighbor)
-                    print(neighbor.string_move)
+            # Add current state to the closed set (convert player_pos and boxes to tuples)
+            self.closed_set.add((
+                tuple(current_state.player_pos), 
+                tuple(tuple(box) for box in current_state.boxes)  # Convert each box position to a tuple
+            ))
 
-        return None, len(self.visited)  # If no solution
+            # Generate neighbors and explore them
+            neighbors = current_state.get_neighbors(self.data)
+            self.node_count += len(neighbors)
 
+            for _, neighbor in neighbors:
+                # If this neighbor has not been visited before, add it to the open list
+                neighbor_boxes_tuple = tuple(tuple(box) for box in neighbor.boxes)  # Convert boxes to tuple of tuples
 
+                if (tuple(neighbor.player_pos), neighbor_boxes_tuple) not in self.closed_set:
+                    heapq.heappush(self.open_list, (
+                        neighbor.g_cost + neighbor.calculate_heuristic(neighbor, self.data.goal_state), 
+                        neighbor
+                    ))
 
+        return None, self.node_count  # No solution found
 
 ### Action-----------------------------------------------------------------------------------------
 
