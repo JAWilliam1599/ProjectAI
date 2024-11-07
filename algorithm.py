@@ -388,12 +388,24 @@ class AStar_GameState:
         Calculate the cost of the current move based on the weight of the box being pushed.
         """
         move_cost = 1  # Base cost of moving (without pushing a box)
+        
+        # Debugging: Print the number of boxes and the length of stone_weights
+        print(f"Number of boxes: {len(boxes)}, Length of stone_weights: {len(data.stone_weights)}")
+
         if boxes != self.boxes:  # If a box was moved
             # Find which box was moved and add its weight to the cost
             for i, box in enumerate(boxes):
-                if box != self.boxes[i]:  # If the box position changed
+                # Ensure we don't go out of range by checking if there's a weight for this box
+                if i < len(data.stone_weights):
+                    print(f"Box {i} moved: {box}, adding weight {data.stone_weights[i]} to cost.")
                     move_cost += data.stone_weights[i]  # Add the weight of the moved box
+                else:
+                    # If there is no stone weight for this box, print a warning and set a default weight
+                    print(f"Warning: No stone weight for Box {i} at position {box}. Using default weight 1.")
+                    move_cost += 1  # Default weight if none is provided
+
         return move_cost
+
 
     def calculate_heuristic(self, state, goal_state):
         """
@@ -433,9 +445,14 @@ class AStar:
             # Get the state with the lowest f-cost
             f_cost, current_state = heapq.heappop(self.open_list)
 
+            print(f"Exploring state: Player Position = {current_state.player_pos}, "
+                  f"Boxes = {current_state.boxes}, f_cost = {current_state.f_cost}")
+
+
             # If we reach the goal state, return the solution (string_move) and node count
             if current_state.is_goal_state(self.data.goal_state):
                 print("Goal reached!")
+                print(f"Solution path: {current_state.string_move}")
                 return current_state, self.node_count  # Return both the solution and node count
 
             # Add current state to the closed set (convert player_pos and boxes to tuples)
