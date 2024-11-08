@@ -329,14 +329,41 @@ class UCS_GameState:
         Check if all the boxes are on the goal positions.
         """
         return self.boxes == goal_state
-    
+
+    @staticmethod
+    def action(row, col, boxes, data, r, c):
+        """
+        Implement the action logic to move the player and possibly push boxes.
+        Return if a box was moved and the weight of the moved box (or None if none moved).
+        """
+        new_row, new_col = row + r, col + c
+        if [new_row, new_col] in data.walls:
+            return False, None
+
+        if [new_row, new_col] in boxes:
+            new_box_row, new_box_col = new_row + r, new_col + c
+            if [new_box_row, new_box_col] in data.walls or [new_box_row, new_box_col] in boxes:
+                return False, None
+
+            # Get the index of the box and its weight from stone_weights
+            box_index = boxes.index([new_row, new_col])
+            box_weight = data.stone_weights[box_index]
+
+            # Move the box and update the box positions
+            boxes.remove([new_row, new_col])
+            boxes.append([new_box_row, new_box_col])
+
+            # Return True (box moved) and the weight of the box
+            return True, box_weight
+
+        return True, None
+
     def get_neighbors(self, data):
         """
         Get possible next states after the player moves and pushes boxes.
         Returns a list of UCS_GameState objects.
         """
         directions = [(-1, 0, "u"), (1, 0, "d"), (0, -1, "l"), (0, 1, "r")]
-
         row, col = self.player_pos
         neighbors = []
 
@@ -348,93 +375,64 @@ class UCS_GameState:
             if [new_row, new_col] in data.walls:  # Skip if it's a wall
                 continue
 
-            # Try to move in the direction
+            # Create a copy of boxes and attempt to move in the direction
             boxes = self.boxes.copy()
-            result = action(row, col, boxes, data, r, c)
-            if result:
+            box_moved, box_weight = UCS_GameState.action(row, col, boxes, data, r, c)
+            
+            if box_moved:
                 new_player_pos = [new_row, new_col]
 
-                # If a box is moved, capitalize the move direction
+                # Capitalize move direction if a box was moved
                 if boxes != self.boxes:
                     move_direction = move_direction.upper()
 
-                # Calculate the g-cost (the new cost incurred for this move)
-                move_cost = 1  # Base cost of moving (without pushing a box)
-                if boxes != self.boxes:
-                    move_cost += 1
+                # Calculate the move cost: base cost of 1 plus weight if a box is moved
+                move_cost = 1
+                if box_weight is not None:
+                    move_cost += box_weight  # Add box weight to the move cost
 
+                # Update the cumulative cost, considering both the player and box movement
                 new_g_cost = self.g_cost + move_cost
 
-                # Create the new string of moves
+                # Create the move string
                 new_string_move = self.string_move + move_direction
 
-                # Create a new state
+                # Create the new state and add to neighbors
                 new_state = UCS_GameState(new_player_pos, boxes, new_string_move, new_g_cost, self)
-
-                # Add the new state to the neighbors list
                 neighbors.append(new_state)
 
         return neighbors
-    
+
+
     @staticmethod
     def ucs(initial_state, goal_state, data):
         priority_queue = []
         heapq.heappush(priority_queue, (initial_state.g_cost, initial_state))
-        visited = set()
+        visited = {}
 
         while priority_queue:
             current_cost, current_state = heapq.heappop(priority_queue)
-
-            if current_state.is_goal_state(goal_state):
-                # Return the UCS_GameState itself, not the reconstructed path string
-                return current_state, data.node_count
-
+            
+            # Track the state by its position and boxes, and only expand if we find a lower cost
             state_key = (tuple(current_state.player_pos), tuple(map(tuple, current_state.boxes)))
-            if state_key in visited:
+            if state_key in visited and visited[state_key] <= current_cost:
                 continue
 
-            visited.add(state_key)
-            data.node_count += 1
+            # Mark this state with the current cost
+            visited[state_key] = current_cost
 
+            if current_state.is_goal_state(goal_state):
+                return current_state, data.node_count
+
+            # Expand neighbors
             for neighbor in current_state.get_neighbors(data):
                 neighbor_key = (tuple(neighbor.player_pos), tuple(map(tuple, neighbor.boxes)))
-                if neighbor_key not in visited:
+                if neighbor_key not in visited or visited[neighbor_key] > neighbor.g_cost:
                     heapq.heappush(priority_queue, (neighbor.g_cost, neighbor))
 
         return None, data.node_count
 
 
-def action(row, col, boxes, data, r, c):
-    """
-    Implement the action logic to move the player and possibly push boxes.
-    """
-    new_row, new_col = row + r, col + c
-    if [new_row, new_col] in data.walls:
-        return False
-    if [new_row, new_col] in boxes:
-        new_box_row, new_box_col = new_row + r, new_col + c
-        if [new_box_row, new_box_col] in data.walls or [new_box_row, new_box_col] in boxes:
-            return False
-        boxes.remove([new_row, new_col])
-        boxes.append([new_box_row, new_box_col])
-    return True
-
-def reconstruct_path(state):
-    """
-    Reconstruct the path from the initial state to the goal state.
-    """
-    path = []
-    while state:
-        path.append(state.string_move)
-        state = state.parent
-    return ''.join(reversed(path))
-
-def get_possible_moves(state):
-    """
-    Generate possible moves for the player.
-    """
-    directions = [(-1, 0, "u"), (1, 0, "d"), (0, -1, "l"), (0, 1, "r")]
-    return directions
     
 
 ### A*---------------------------------------------------------------------------------------------
