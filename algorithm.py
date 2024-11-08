@@ -3,6 +3,7 @@ from multiprocessing import Manager, Pool
 import concurrent.futures
 import threading
 import heapq
+from queue import PriorityQueue
 import math
 import itertools
 
@@ -38,6 +39,11 @@ class Initialized_data:
     def DFS(self, player_position, boxes):
         first_DFS = DFS_GameState(player_position, boxes)
         return first_DFS.dfs(self)
+
+    def UCS(self, player_position, boxes, shared_stop_event):
+        first_UCS = UCS_GameState(player_position, boxes)
+        return first_UCS.ucs(self, shared_stop_event)
+
     
     def AStar(self, player_position, boxes):
         """
@@ -73,6 +79,13 @@ class Manager_Algorithm:
         with concurrent.futures.ThreadPoolExecutor() as executor:
             future = executor.submit(game_state.bfs, self.data, self.shared_stop_event)
             goal_state, node_counter = future.result()  # Wait for BFS to complete
+            return goal_state, node_counter
+    
+    def run_ucs(self, player_position, boxes):
+        game_state = UCS_GameState(player_position, boxes)
+        with concurrent.futures.ThreadPoolExecutor() as executor:
+            future = executor.submit(game_state.ucs, self.data, self.shared_stop_event)
+            goal_state, node_counter = future.result()  # Wait for UCS to complete
             return goal_state, node_counter
 
     def run_astar(self, player_position, boxes, stone_weights):
@@ -306,6 +319,103 @@ class DFS_GameState:
         This function is only for multiprocessing
         """
         return state.get_neighbors(data)
+
+### UCS--------------------------------------------------------------------------------------------
+import heapq
+
+class UCS_GameState:
+    """
+    This class implements the game state using Uniform Cost Search (UCS).
+    UCS considers the cost to reach each node, expanding the least-cost path first.
+    """
+    def __init__(self, player_pos, boxes, string_move="", g_cost=0, parent=None):
+        """
+        Initialize the game state with player's position, boxes, g-cost, and parent reference.
+        """
+        self.player_pos = player_pos
+        self.boxes = boxes
+        self.string_move = string_move  # Move string (e.g., "RURU")
+        self.g_cost = g_cost
+        self.parent = parent
+
+    def __lt__(self, other):
+        """
+        Less-than method for comparison, needed for PriorityQueue.
+        """
+        return self.g_cost < other.g_cost
+
+    def is_goal_state(self, goal_state):
+        """
+        Check if all the boxes are on the goal positions.
+        """
+        return self.boxes == goal_state
+    
+    def get_neighbors(self, data):
+        """
+        Get possible next states after the player moves and pushes boxes.
+        Returns a list of UCS_GameState objects.
+        """
+        directions = [(-1, 0, "u"), (1, 0, "d"), (0, -1, "l"), (0, 1, "r")]
+
+        row, col = self.player_pos
+        neighbors = []
+
+        for r, c, move_direction in directions:
+            # Calculate new player position
+            new_row, new_col = row + r, col + c
+
+            # Check if the next position is a wall
+            if [new_row, new_col] in data.walls:  # Skip if it's a wall
+                continue
+
+            # Try to move in the direction
+            boxes = self.boxes.copy()
+            result = action(row, col, boxes, data, r, c)
+            if result:
+                new_player_pos = [new_row, new_col]
+
+                # If a box is moved, capitalize the move direction
+                if boxes != self.boxes:
+                    move_direction = move_direction.upper()
+
+                # Calculate the g-cost (the new cost incurred for this move)
+                move_cost = 1  # Base cost of moving (without pushing a box)
+                if boxes != self.boxes:
+                    move_cost += 1
+
+                new_g_cost = self.g_cost + move_cost
+
+                # Create the new string of moves
+                new_string_move = self.string_move + move_direction
+
+                # Create a new state
+                new_state = UCS_GameState(new_player_pos, boxes, new_string_move, new_g_cost, self)
+
+                # Add the new state to the neighbors list
+                neighbors.append(new_state)
+
+        return neighbors
+    
+    def ucs(self, data, shared_stop_event):
+        """
+        Perform Uniform Cost Search to find the optimal path.
+        """
+        queue = PriorityQueue()
+        queue.put((self.g_cost, self))
+
+        while not shared_stop_event.is_set() and not queue.empty():
+            _, current_state = queue.get()
+
+            if current_state.is_goal_state(data.goal_state):
+                return current_state, data.node_count
+
+            neighbors = current_state.get_neighbors(data)
+            data.node_count += len(neighbors)
+
+            for neighbor in neighbors:
+                queue.put((neighbor.g_cost, neighbor))
+
+        return None, data.node_count
 
 
 ### A*---------------------------------------------------------------------------------------------

@@ -1,4 +1,5 @@
 # Import module  
+from multiprocessing import Manager
 from tkinter import *
 import os
 import time
@@ -331,7 +332,7 @@ class GamePlay(Frame, metaclass=SingletonMeta):
         action.run_DFS()
     elif chosenAlgo == 3:
         print("UCS")
-        #action.run_UCS()  #nho uncomment nha H
+        action.run_UCS()  #nho uncomment nha H
     elif chosenAlgo == 4:
         print("A*")
         action.run_astar()  
@@ -739,6 +740,107 @@ class Actions(metaclass=SingletonMeta):
         goal_state.string_move)
 
     del data # Remove the reference after running
+
+  def run_UCS(self):
+    # Bring the data to the class
+    gameplay = self.game_play
+    self.data = gameplay.map_data
+
+    # Allocate values to variables for UCS
+    player_position = gameplay.player_position
+    boxes = gameplay.boxes
+    walls = gameplay.walls
+    goals = gameplay.goals
+    
+    # Initialize data for the UCS
+    data = a.Initialized_data(walls, goals)
+    
+    # Start measuring memory and time
+    tracemalloc.start()
+    start_time = time.time()
+
+    # Run UCS
+    with concurrent.futures.ThreadPoolExecutor() as executor:
+        future = executor.submit(data.UCS, player_position, boxes, Manager().Event())  # Run UCS in a separate thread
+        goal_state, node_counter = future.result()  # Wait for UCS to complete
+
+    # Stop measuring time and memory after UCS completes
+    end_time = time.time()
+    elapsed_time = (end_time - start_time) * 1000  # Convert time to milliseconds
+
+    # Get the current, peak memory usage
+    current, peak = tracemalloc.get_traced_memory()
+    current = current >> 20  # Convert to MB
+    tracemalloc.stop()
+
+    # Move the player, ensuring that the move string is unmodified
+    if goal_state is not None:
+        # Get the node generated
+        string_move = goal_state.string_move.lower()
+        string_length = len(string_move)
+        i = 0
+        while i < string_length:
+            time.sleep(0.5)
+            if self.isPause:  # Handle pause condition
+                continue
+
+            self.move_with_character(string_move[i])
+            i += 1
+
+        # Write results to a file
+        self.write_to_file("UCS: \n" +
+            f"Steps: {self.game_play.step_counter}, Weights: {self.game_play.weight_counter}," +
+            f" Node: {node_counter}, Time (ms): {elapsed_time}, Memory (MB): {current:.2f}\n" +
+            goal_state.string_move)
+
+    del data  # Remove the reference after running
+
+  # def run_UCS(self):
+  #   # Bring the data to the class
+  #   gameplay = self.game_play
+  #   self.data = gameplay.map_data
+
+  #   # Allocate values to variables for UCS
+  #   player_position = gameplay.player_position
+  #   boxes = gameplay.boxes
+  #   walls = gameplay.walls
+  #   goals = gameplay.goals
+    
+  #   # Initialize the data for UCS
+  #   data = a.Initialized_data(walls, goals)
+    
+  #   # Start measuring memory and time
+  #   tracemalloc.start()
+  #   start_time = time.time()
+
+  #   # Run UCS from algorithm.py, assuming UCS function is properly set
+  #   self.manager = a.Manager_Algorithm(data=data)
+  #   goal_state, node_counter = self.manager.run_ucs(player_position, boxes)
+
+  #   # Stop measuring time and memory after UCS completes
+  #   end_time = time.time()
+  #   elapsed_time = (end_time - start_time) * 1000  # Convert to milliseconds
+
+  #   # Get the current, peak memory usage
+  #   current, peak = tracemalloc.get_traced_memory()
+  #   current = current >> 20  # Convert to MB
+  #   tracemalloc.stop()
+
+  #   # Move the player if the goal state is found
+  #   if goal_state is not None:
+  #       string_move = goal_state.string_move.lower()
+  #       for character in string_move:
+  #           time.sleep(0.5)
+  #           self.move_with_character(character)
+
+  #       # Log the results
+  #       self.write_to_file("UCS: \n" +
+  #                          f"Steps: {self.game_play.step_counter}, Weights: {self.game_play.weight_counter}," +
+  #                          f" Nodes: {node_counter}, Time (ms): {elapsed_time}, Memory (MB): {current:.2f}\n" +
+  #                          goal_state.string_move)
+
+  #   del data  # Clean up after running
+
 
 
   def run_astar(self):
