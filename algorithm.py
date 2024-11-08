@@ -171,13 +171,6 @@ class BFS_GameState:
         while not shared_stop_event.is_set() and queue:
             batch_size = min(len(queue), 16)
             current_states = [queue.popleft() for _ in range(batch_size)]
-
-            # Check if in the batch, there is a goal state or not
-            for state in current_states:
-                if state.is_goal_state(data.goal_state): 
-                    print("done")
-                    queue.clear()
-                    return state, data.node_count
             
             results = pool.starmap(self.generate_state, [(state, data) for state in current_states])
 
@@ -185,12 +178,18 @@ class BFS_GameState:
                 for neighbor in neighbors:
                     if neighbor is None: continue
 
+                    if neighbor.is_goal_state(data.goal_state):
+                        print("done")
+                        queue.clear()
+                        return neighbor, data.node_count
+
                     # Only add the neighbor to the visited list if it hasn't been added yet
                     visited_list = [neighbor.player_pos, neighbor.boxes]
                     if visited_list not in visited:
                         visited.append(visited_list)
                         queue.append(neighbor)
                         data.node_count += 1
+                        print(neighbor.string_move)
         return None, data.node_count
     
     def generate_state(self, state, data):
@@ -292,6 +291,7 @@ class DFS_GameState:
                         visited.append(visited_list)
                         queue.append(neighbor)
                         data.node_count += 1
+                        print(neighbor.string_move)
         return None, data.node_count
     
     def generate_state(self, state, data):

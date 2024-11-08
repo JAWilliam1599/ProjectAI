@@ -58,20 +58,20 @@ class tkinterApp(Tk):
       self.container.grid_columnconfigure(0, weight = 1)
 
       # Initializing frames to an empty array
-      self.frames = {}  
+      self.frames = {}
 
       # Iterating through a tuple consisting
       # Of the different page layouts
       for F in (StartPage, GamePlay):
 
-          frame = F(self.container, self)
+          self.frame = F(self.container, self)
 
           # initializing frame of that object from
           # startpage, page1, page2 respectively with 
           # for loop
-          self.frames[F] = frame 
+          self.frames[F] = self.frame 
 
-          frame.grid(row = 0, column = 0, sticky ="nsew")
+          self.frame.grid(row = 0, column = 0, sticky ="nsew")
 
       self.show_frame(StartPage)
 
@@ -79,11 +79,11 @@ class tkinterApp(Tk):
   # Parameter
   def show_frame(self, cont):
       if cont == GamePlay:
-        frame = GamePlay(self.container, self)
-        self.frames[GamePlay] = frame
-        frame.grid(row = 0, column = 0, sticky ="nsew")
-      frame = self.frames[cont]
-      frame.tkraise()
+        self.frame = GamePlay(self.container, self)
+        self.frames[GamePlay] = self.frame
+        self.frame.grid(row = 0, column = 0, sticky ="nsew")
+      self.frame = self.frames[cont]
+      self.frame.tkraise()
 
 class StartPage(Frame, metaclass=SingletonMeta):
   def __init__(self, parent, controller): 
@@ -148,7 +148,7 @@ class StartPage(Frame, metaclass=SingletonMeta):
     if self.previous_button != None:
       controller.show_frame(GamePlay)
       gameplay1 = GamePlay.get_instance()
-      threading.Thread(target=gameplay1.Action, args=('Testcase/' + filenames[chosenLevel-1],)).start()
+      gameplay1.Action('Testcase/' + filenames[chosenLevel-1])
     else:
       self.alert.place(x = 415, y = 545)
   
@@ -236,46 +236,64 @@ class GamePlay(Frame, metaclass=SingletonMeta):
     self.restartButton = Button(self, bg="#222a5c", image=self.restartImage, padx=0, pady=0, command= lambda: self.restart(filename='Testcase/' + filenames[chosenLevel-1]))
     self.restartButton.place(x = 982, y = 144)
   
-  def exit(self, controller):
+  def exit_component(self):
+    """
+    This function is used both for exit method and close window method
+    """
     try:
       # Stop the algorithm and Delete the action
       if hasattr(self.action, 'manager'):
         self.action.manager.stop()
 
+      if(self.isPause == False): self.change_pause_btn()
       self.action.exit()
-      time.sleep(1)
+      self.check_thread() # Wait for the thread
 
       del self.action
       self.action = None
-      
+
+    except Exception as e:
+      print(f"An error occurred while reseting: {e}")
+
+  def exit(self, controller):
+      """
+      This function is used for exit method
+      """
+      self.exit_component()
+
       # Reset the gameplay
       self.reset_state()
 
       # Change the frame
       controller.show_frame(StartPage)
-    except Exception as e:
-      print(f"An error occurred while exiting: {e}")
+
 
   def restart(self, filename):
-    try:
-      # Stop the algorithm and return the action
-      if hasattr(self.action, 'manager'):
-        self.action.manager.stop()
+    """
+    This function is used for restart method
+    """
+    self.exit_component()
 
-      self.action.exit()
-      time.sleep(1)
+    # Reset the gameplay
+    self.reset_state()
 
-      del self.action
-      self.action = None
+    # Call the action
+    self.Action(filename)
 
-      # Reset the gameplay
-      self.reset_state()
 
-      # Call the action
-      threading.Thread(target=self.Action, args=(filename,)).start()
-
-    except Exception as e:
-      print(f"An error occurred while restarting: {e}")
+  def check_thread(self):
+    """
+    This function is used to wait for the thread to finish\n
+    The deadlock is the main thread waiting thread1\n
+    The thread1 tries to update GUI so it waits main thread\n
+    The solution is to check the thread's status periodically and stop waiting if the thread is finished.
+    """
+    if self.thread1.is_alive():
+      self.after(100, self.check_thread)
+    else:
+      if(self.action.done_event):
+        self.action.done_event.set()
+      self.thread1.join()
 
   def change_pause_btn(self):
     if self.isPause:
@@ -333,12 +351,12 @@ class GamePlay(Frame, metaclass=SingletonMeta):
     self.action = Actions(self)
     print(self.action)
     if chosenAlgo != 0:
-        self.action.run_algorithm()
+      self.thread1 = threading.Thread(target=self.action.run_algorithm, args=[chosenAlgo,])
+      self.thread1.start()
     else:
         print("No algorithm selected")
 
     print("done at GamePlay")
-    # Run the action
 
   def draw_map(self):
     """
@@ -410,31 +428,19 @@ class GamePlay(Frame, metaclass=SingletonMeta):
     except Exception as e:
       print(f"An error occurred: {str(e)}")
 
-  def destroy_frame(self):
-    """
-    Subfunction to destroy entirely frame
-    """
-    if self.map_frame and self.map_frame.winfo_exists():
-      for widget in self.map_frame.winfo_children():
-        widget.destroy()
-
-      self.map_frame.destroy()
-      self.map_frame = None
-
   def reset_state(self):
     """
     This function is used to reset the state of the gameplay\n
     Very important before loading a new stage
     """
+
     # Reinitialize all the variables
-    self.destroy_frame()
+    self.map_frame.destroy()
+    self.map_frame = None
     self.map_data.clear()  # Your map data goes here
     self.list_rocks_weight.clear()  # Your weights data goes here
     self.cweight = 0
     self.player_position.clear()
-    if(self.player_canvas): 
-      self.player_canvas.destroy()
-      self.player_canvas = None
 
     # Reset walls, goals and boxes
     self.walls.clear()
@@ -447,10 +453,6 @@ class GamePlay(Frame, metaclass=SingletonMeta):
     self.weight_counter = 0
     self.counterStep.config(text=f"Step: {self.step_counter}")
     self.counterWeight.config(text=f"Weight: {self.weight_counter}")
-
-    # Reset the pause
-    self.isPause = True
-    self.pauseButton.config(image=self.startImage)
 
   def show_popup(self, message, color):
     self.proccess_label.destroy()
@@ -476,6 +478,7 @@ class Actions():
     """
     self.game_play = game_play
     self.data = game_play.map_data #Brings the data to the class
+    self.done_event = None
     self.isPause = True
     self.isExit = False
 
@@ -578,12 +581,12 @@ class Actions():
       self.game_play.player_canvas = Canvas(self.game_play.map_frame, bg="#222a5c", highlightthickness=0, borderwidth=0, width=32, height=32)
       self.game_play.player_canvas.create_image(16, 16, image=self.game_play.player_image, anchor=CENTER, tags="player")
     else: 
-      self.game_play.player_canvas.grid_forget()
+      self.game_play.player_canvas.grid_remove()
 
     self.game_play.player_canvas.grid(row= new_row, column= new_column)
     
     # Record the new canvas to the map_objects and player position
-    self.game_play.map_objects[f"{new_row}_{new_column}"] = player_canvas
+    self.game_play.map_objects[f"{new_row}_{new_column}"] = self.game_play.player_canvas
     self.game_play.player_position = [new_row, new_column]
     # Add counter
     self.add_step(weight)
@@ -607,7 +610,7 @@ class Actions():
     if self.data[new_player_row][new_player_column] not in ["$", "*"]: return # This function check data, so move player must follow after
 
     canva = self.game_play.map_objects[f"{new_box_row}_{new_box_column}_box"] = self.game_play.map_objects.pop(f"{new_player_row}_{new_player_column}_box")
-    canva.grid_forget()
+    canva.grid_remove()
     if(self.data[new_player_row][new_player_column] == "*"):
       self.data[new_player_row][new_player_column] = "."
       self.game_play.map_objects[f"{new_player_row}_{new_player_column}"].grid()
@@ -636,12 +639,6 @@ class Actions():
     self.game_play.counterStep.config(text=f"Steps: {self.game_play.step_counter}")
     self.game_play.counterWeight.config(text=f"Weight: {self.game_play.weight_counter}")
 
-  # Add weights to the counter
-  def add_weight(self, text):
-    # This move costs 1 and the weight of boxes
-    self.game_play.weight_counter += int(text) + 1
-    self.game_play.counterWeight.config(text=f"Weight: {self.game_play.weight_counter}")
-
   def move_character_with_instructions(self, character):
     if character == "u":
       self.up()
@@ -652,7 +649,10 @@ class Actions():
     elif character == "r":
       self.right()
 
-  def run_algorithm(self):
+  def run_algorithm(self, chosenAlgo):
+    self.done_event = threading.Event()
+    self.done_event.clear()
+
     # Bring the data to the class
     gameplay = self.game_play
     self.data = gameplay.map_data
@@ -721,6 +721,8 @@ class Actions():
       gameplay.show_popup("No solution!","#f20707")
 
     del data # Remove the reference after running
+    print("Stop successfully")
+    self.done_event.set()
 
   def exit(self):
     self.isExit = True
@@ -739,5 +741,8 @@ def application():
   Runs this function to run the program
   """
   app = tkinterApp()
+
   app.mainloop()
+  # if exit in gameplay, app.frame is gameplay
+  app.frame.exit_component()
 
