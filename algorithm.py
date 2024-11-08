@@ -68,11 +68,13 @@ class Manager_Algorithm:
             return goal_state, node_counter
             
     def run_ucs(self, player_position, boxes):
+        # Initialize game state
         game_state = UCS_GameState(player_position, boxes)
-        with concurrent.futures.ThreadPoolExecutor() as executor:
-            future = executor.submit(game_state.ucs, self.data, self.shared_stop_event)
-            goal_state, node_counter = future.result()  # Wait for UCS to complete
-            return goal_state, node_counter
+
+        # Pass `data` to the UCS function
+        goal_state, node_counter = UCS_GameState.ucs(game_state, self.data.goal_state, self.data)
+        return goal_state, node_counter
+
 
     def run_astar(self, player_position, boxes):
         """
@@ -299,6 +301,8 @@ class DFS_GameState:
         return state.get_neighbors(data)
 
 ### UCS--------------------------------------------------------------------------------------------
+import heapq
+
 class UCS_GameState:
     """
     This class implements the game state using Uniform Cost Search (UCS).
@@ -372,26 +376,66 @@ class UCS_GameState:
 
         return neighbors
     
-    def ucs(self, data, shared_stop_event):
-        """
-        Perform Uniform Cost Search to find the optimal path.
-        """
-        queue = PriorityQueue()
-        queue.put((self.g_cost, self))
+    @staticmethod
+    def ucs(initial_state, goal_state, data):
+        priority_queue = []
+        heapq.heappush(priority_queue, (initial_state.g_cost, initial_state))
+        visited = set()
 
-        while not shared_stop_event.is_set() and not queue.empty():
-            _, current_state = queue.get()
+        while priority_queue:
+            current_cost, current_state = heapq.heappop(priority_queue)
 
-            if current_state.is_goal_state(data.goal_state):
+            if current_state.is_goal_state(goal_state):
+                # Return the UCS_GameState itself, not the reconstructed path string
                 return current_state, data.node_count
 
-            neighbors = current_state.get_neighbors(data)
-            data.node_count += len(neighbors)
+            state_key = (tuple(current_state.player_pos), tuple(map(tuple, current_state.boxes)))
+            if state_key in visited:
+                continue
 
-            for neighbor in neighbors:
-                queue.put((neighbor.g_cost, neighbor))
+            visited.add(state_key)
+            data.node_count += 1
+
+            for neighbor in current_state.get_neighbors(data):
+                neighbor_key = (tuple(neighbor.player_pos), tuple(map(tuple, neighbor.boxes)))
+                if neighbor_key not in visited:
+                    heapq.heappush(priority_queue, (neighbor.g_cost, neighbor))
 
         return None, data.node_count
+
+
+def action(row, col, boxes, data, r, c):
+    """
+    Implement the action logic to move the player and possibly push boxes.
+    """
+    new_row, new_col = row + r, col + c
+    if [new_row, new_col] in data.walls:
+        return False
+    if [new_row, new_col] in boxes:
+        new_box_row, new_box_col = new_row + r, new_col + c
+        if [new_box_row, new_box_col] in data.walls or [new_box_row, new_box_col] in boxes:
+            return False
+        boxes.remove([new_row, new_col])
+        boxes.append([new_box_row, new_box_col])
+    return True
+
+def reconstruct_path(state):
+    """
+    Reconstruct the path from the initial state to the goal state.
+    """
+    path = []
+    while state:
+        path.append(state.string_move)
+        state = state.parent
+    return ''.join(reversed(path))
+
+def get_possible_moves(state):
+    """
+    Generate possible moves for the player.
+    """
+    directions = [(-1, 0, "u"), (1, 0, "d"), (0, -1, "l"), (0, 1, "r")]
+    return directions
+    
 
 ### A*---------------------------------------------------------------------------------------------
 
