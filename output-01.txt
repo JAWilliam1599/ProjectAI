@@ -10,3 +10,18 @@ ururrddlL
 A*
 Steps: 9, Weights: 12, Node: 21, Time (ms): 223.03080558776855, Memory (MB): 0.00
 ururrddlL
+BFS
+Steps: 8, Weights: 11, Node: 27, Time (ms): 302.4013042449951, Memory (MB): 0.00
+ururrddlL
+BFS
+Steps: 7, Weights: 10, Node: 27, Time (ms): 279.27088737487793, Memory (MB): 0.00
+ururrddlL
+BFS
+Steps: 8, Weights: 11, Node: 27, Time (ms): 274.5637893676758, Memory (MB): 0.00
+ururrddlL
+BFS
+Steps: 9, Weights: 18, Node: 27, Time (ms): 294.5139408111572, Memory (MB): 0.00
+ururrddlL
+BFS
+Steps: 9, Weights: 18, Node: 27, Time (ms): 313.5216236114502, Memory (MB): 0.00
+ururrddlL
