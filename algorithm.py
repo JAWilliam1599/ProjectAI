@@ -4,15 +4,13 @@ import concurrent.futures
 import threading
 import heapq
 from queue import PriorityQueue
-import math
-import itertools
 
 data = None
 ### Data--------------------------------------------------------------------------------------------
 class Initialized_data:
     """
     This function is used to initialize data that is not changed during bfs, dfs, UCS, A*\n
-    This includes walls, goal_state
+    This includes walls, goal_state, total nodes generated, and stone_weights
     """
     def __init__(self, walls, goal_state, stone_weights = None):
         """
@@ -24,40 +22,12 @@ class Initialized_data:
         self.stone_weights = stone_weights
         self.node_count = 0
 
-
-    def BFS(self, player_position, boxes):
-        """
-        This function is used for BFS\n
-        :param player_position: Position of the player
-        :param boxes: Position of the boxes
-        :return: First BFS GameState object
-        """
-        # Initialize BFS
-        first_BFS = BFS_GameState(player_position, boxes)
-        return first_BFS.bfs(self)
-    
-    def DFS(self, player_position, boxes):
-        first_DFS = DFS_GameState(player_position, boxes)
-        return first_DFS.dfs(self)
-
-    def UCS(self, player_position, boxes, shared_stop_event):
-        first_UCS = UCS_GameState(player_position, boxes)
-        return first_UCS.ucs(self, shared_stop_event)
-
-    
-    def AStar(self, player_position, boxes):
-        """
-        This function is used for A* search.
-        :param player_position: Position of the player
-        :param boxes: Position of the boxes
-        :param stone_weights: List of stone weights
-        :return: Solution path and node count from A* search
-        """
-        astar_solver = AStar(player_position, boxes, self.stone_weights, self)
-        return astar_solver.search()
-
 ### Manager-----------------------------------------------------------------------------------------
 class Manager_Algorithm:
+    """
+    This class is used to manage the BFS, DFS, UCS, and A* algorithms\n
+    This includes the shared visited list, the shared stop event, and the pool for multiprocessing
+    """
     def __init__(self, data):
         """
         Initialize the Manager\n
@@ -67,6 +37,7 @@ class Manager_Algorithm:
         self.data = data
         self.manager = Manager()
         self.shared_visited_list = self.manager.list()
+        self.pool = None
 
     def run_bfs(self, player_position, boxes):
         """
@@ -75,12 +46,27 @@ class Manager_Algorithm:
         :param boxes: Position of the boxes
         :return: the goal state and the number of nodes explored
         """
-        game_state = BFS_GameState(player_position, boxes, self.shared_visited_list)
+        game_state = BFS_GameState(player_position, boxes)
+        self.pool = Pool(processes=16)
         with concurrent.futures.ThreadPoolExecutor() as executor:
-            future = executor.submit(game_state.bfs, self.data, self.shared_stop_event)
+            future = executor.submit(game_state.bfs, self.data, self.shared_visited_list, self.shared_stop_event, self.pool)
             goal_state, node_counter = future.result()  # Wait for BFS to complete
             return goal_state, node_counter
-    
+
+    def run_dfs(self, player_position, boxes):
+        """
+        This method is used for BFS\n
+        :param player_position: Position of the player
+        :param boxes: Position of the boxes
+        :return: the goal state and the number of nodes explored
+        """
+        game_state = DFS_GameState(player_position, boxes)
+        self.pool = Pool(processes=16)
+        with concurrent.futures.ThreadPoolExecutor() as executor:
+            future = executor.submit(game_state.dfs, self.data, self.shared_visited_list, self.shared_stop_event, self.pool)
+            goal_state, node_counter = future.result()  # Wait for BFS to complete
+            return goal_state, node_counter
+            
     def run_ucs(self, player_position, boxes):
         game_state = UCS_GameState(player_position, boxes)
         with concurrent.futures.ThreadPoolExecutor() as executor:
@@ -88,7 +74,7 @@ class Manager_Algorithm:
             goal_state, node_counter = future.result()  # Wait for UCS to complete
             return goal_state, node_counter
 
-    def run_astar(self, player_position, boxes, stone_weights):
+    def run_astar(self, player_position, boxes):
         """
         This method is used for A* search
         :param player_position: Position of the player
@@ -96,15 +82,14 @@ class Manager_Algorithm:
         :param stone_weights: List of stone weights
         :return: the solution path and number of nodes explored from A* search
         """
-        # Initialize A* GameState for A* search
-        astar_game_state = AStar_GameState(player_position, boxes, stone_weights, self.data.walls, self.data.goal_state)
+        # Initialize A*
+        astar_game_state = AStar(player_position, boxes, self.data)
 
         # Run A* search using ThreadPoolExecutor to handle asynchronous execution
         with concurrent.futures.ThreadPoolExecutor() as executor:
-            future = executor.submit(astar_game_state.search)
+            future = executor.submit(astar_game_state.search, self.shared_stop_event)
             solution_path, nodes_explored = future.result()  # Wait for A* to complete
-
-        return solution_path, nodes_explored
+            return solution_path, nodes_explored
     
     def stop(self):
         """
@@ -112,14 +97,13 @@ class Manager_Algorithm:
         """
         self.shared_stop_event.set()  # Signal all GameStates to stop
 
-
 ### BFS--------------------------------------------------------------------------------------------
 class BFS_GameState:
     """
     This is the class implement the game state using BFS\n
     BFS doesn't support weights
     """
-    def __init__(self, player_pos, boxes, visited, string_move=""):
+    def __init__(self, player_pos, boxes, string_move=""):
         """
         Initialize the game state with player's position and string move\n
         Player's position is a list of row and column [row, column]\n
@@ -128,7 +112,6 @@ class BFS_GameState:
         self.player_pos = player_pos
         self.boxes = boxes
         self.string_move = string_move  # Store the string representation of the move (e.g., "RURU")
-        self.visited = visited
 
     def is_goal_state(self, goal_state):
         # Check if all the boxes are on the goal
@@ -169,20 +152,19 @@ class BFS_GameState:
 
                 # Create a new state
                 new_state = BFS_GameState(new_players_position, boxes, new_string_move)
-                data.node_count += 1 # Count all the nodes that being generated
                 neighbors.append(new_state)
             else: continue
 
         return neighbors
     
-    def bfs(self, data, shared_stop_event):
+    def bfs(self, data, visited, shared_stop_event, pool):
         """
         Breadth-first search algorithm to find the shortest path to the goal state
         """
         queue = deque([self])
 
         # Use the shared list
-        self.visited.append((self.player_pos, tuple(self.boxes)))
+        visited.append((self.player_pos, tuple(self.boxes)))
 
         while not shared_stop_event.is_set() and queue:
             batch_size = min(len(queue), 16)
@@ -193,11 +175,9 @@ class BFS_GameState:
                 if state.is_goal_state(data.goal_state): 
                     print("done")
                     queue.clear()
-                    print(data.node_count)
                     return state, data.node_count
             
-            with Pool(processes=16) as pool:
-                results = pool.starmap(self.generate_state, [(state, data) for state in current_states])
+            results = pool.starmap(self.generate_state, [(state, data) for state in current_states])
 
             for neighbors in results:
                 for neighbor in neighbors:
@@ -205,10 +185,10 @@ class BFS_GameState:
 
                     # Only add the neighbor to the visited list if it hasn't been added yet
                     visited_list = [neighbor.player_pos, neighbor.boxes]
-                    if visited_list not in self.visited:
-                        self.visited.append(visited_list)
+                    if visited_list not in visited:
+                        visited.append(visited_list)
                         queue.append(neighbor)
-                        print(neighbor.string_move)
+                        data.node_count += 1
         return None, data.node_count
     
     def generate_state(self, state, data):
@@ -278,40 +258,38 @@ class DFS_GameState:
 
         return neighbors
     
-    def dfs(self, data):
+    def dfs(self, data, visited, shared_stop_event, pool):
         """
-        Breadth-first search algorithm to find the shortest path to the goal state
+        Depth-first search algorithm to find the shortest path to the goal state
         """
-        with Manager() as manager:
-            queue = deque([self])
-            visited = manager.list() # Create a visited set
-            visited.append([self.player_pos, self.boxes])
+        queue = deque([self])
 
-            with Pool(processes=16) as pool:
-                while queue:
-                    batch_size = min(len(queue), 16)
-                    current_states = [queue.pop() for _ in range(batch_size)]
+        # Use the shared list
+        visited.append((self.player_pos, tuple(self.boxes)))
 
-                    # Check if in the batch, there is a goal state or not
-                    for state in current_states:
-                        if state.is_goal_state(data.goal_state): 
-                            print("done")
-                            queue.clear()
-                            print(data.node_count)
-                            return state, data.node_count
+        while not shared_stop_event.is_set() and queue:
+            batch_size = min(len(queue), 16)
+            current_states = [queue.pop() for _ in range(batch_size)]
 
-                    results = pool.starmap(self.generate_state, [(state, data) for state in current_states])
+            # Check if in the batch, there is a goal state or not
+            for state in current_states:
+                if state.is_goal_state(data.goal_state): 
+                    print("done")
+                    queue.clear()
+                    return state, data.node_count
+            
+            results = pool.starmap(self.generate_state, [(state, data) for state in current_states])
 
-                    for neighbors in results:
-                        for neighbor in neighbors:
-                            if neighbor is None: continue
+            for neighbors in results:
+                for neighbor in neighbors:
+                    if neighbor is None: continue
 
-                            # Only add the neighbor to the visited list if it hasn't been added yet
-                            visited_list = [neighbor.player_pos, neighbor.boxes]
-                            if visited_list not in visited:
-                                visited.append(visited_list)
-                                queue.append(neighbor)
-                                print(neighbor.string_move)
+                    # Only add the neighbor to the visited list if it hasn't been added yet
+                    visited_list = [neighbor.player_pos, neighbor.boxes]
+                    if visited_list not in visited:
+                        visited.append(visited_list)
+                        queue.append(neighbor)
+                        data.node_count += 1
         return None, data.node_count
     
     def generate_state(self, state, data):
@@ -321,8 +299,6 @@ class DFS_GameState:
         return state.get_neighbors(data)
 
 ### UCS--------------------------------------------------------------------------------------------
-import heapq
-
 class UCS_GameState:
     """
     This class implements the game state using Uniform Cost Search (UCS).
@@ -416,7 +392,6 @@ class UCS_GameState:
                 queue.put((neighbor.g_cost, neighbor))
 
         return None, data.node_count
-
 
 ### A*---------------------------------------------------------------------------------------------
 
@@ -535,7 +510,7 @@ class AStar_GameState:
         return self.f_cost < other.f_cost
 
 class AStar:
-    def __init__(self, start_player_pos, start_boxes, stone_weights, data):
+    def __init__(self, start_player_pos, start_boxes, data):
         self.start_player_pos = start_player_pos
         self.start_boxes = start_boxes
         self.data = data  # Reference to Initialized_data instance
@@ -547,11 +522,11 @@ class AStar:
         start_node = AStar_GameState(start_player_pos, start_boxes, "", 0, None, data)
         heapq.heappush(self.open_list, (0, start_node))
 
-    def search(self):
+    def search(self, shared_stop_event):
         """
         Perform A* search to find the optimal path.
         """
-        while self.open_list:
+        while self.open_list and not shared_stop_event.is_set():
             # Get the state with the lowest f-cost
             f_cost, current_state = heapq.heappop(self.open_list)
 
