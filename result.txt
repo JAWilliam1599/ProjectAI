@@ -1,3 +1,3 @@
-UCS: 
-Steps: 9, Weights: 3, Node: 5126, Time (ms): 563.7774467468262, Memory (MB): 1.00
+BFS: 
+Steps: 9, Weights: 12, Node: 21, Time (ms): 422.82724380493164, Memory (MB): 1.00
 ururrddlL
