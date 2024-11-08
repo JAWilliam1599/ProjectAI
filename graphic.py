@@ -191,8 +191,6 @@ class GamePlay(Frame, metaclass=SingletonMeta):
   player_position = []
   # Create a dict to store all canvas created
   map_objects = {} 
-  
-
   # Create some objects to parse in BFS
   walls = [] # A list positions of walls
   goals = [] # A list positions of goals
@@ -206,6 +204,9 @@ class GamePlay(Frame, metaclass=SingletonMeta):
     # Show image using label 
     label1 = Label( self, image = self.bg) 
     label1.place(x = 0, y = 0) 
+
+    self.proccess_label = Label(self, text = "Processing...", font=("Helvetica", 20, "bold"), fg="white", bg="#222a5c")
+    self.proccess_label.place(relx=0.5, rely=0.2, anchor="center")
 
     # Counter steps:
     self.step_counter = 0
@@ -451,6 +452,12 @@ class GamePlay(Frame, metaclass=SingletonMeta):
     self.isPause = True
     self.pauseButton.config(image=self.startImage)
 
+  def show_popup(self, message, color):
+    self.proccess_label.destroy()
+    label = Label(self, text =message, font=("Helvetica", 20, "bold"), fg=color, bg="#222a5c")
+    label.place(relx=0.5, rely=0.2, anchor="center")
+    self.after(8000, label.destroy)
+  
   @classmethod
   def get_instance(cls):
     if cls._instances is None:
@@ -644,7 +651,7 @@ class Actions():
       self.left()
     elif character == "r":
       self.right()
-  
+
   def run_algorithm(self):
     # Bring the data to the class
     gameplay = self.game_play
@@ -686,6 +693,7 @@ class Actions():
 
     # Move the player, init a new variable to make sure that string move is unmodified
     if goal_state is not None:
+      gameplay.show_popup("Solution found!","#00ff1e")
       # Get the node generated
       string_move = goal_state.string_move.lower()
       length = len(string_move)
@@ -705,7 +713,8 @@ class Actions():
         f"Steps: {self.game_play.step_counter}, Weights: {self.game_play.weight_counter}," + 
         f" Node: {node_counter}, Time (ms): {elapsed_time}, Memory (MB): {current:.2f}\n" +
         goal_state.string_move)
-    else: print("No solution")
+    else: 
+      gameplay.show_popup("No solution!","#f20707")
 
     del data # Remove the reference after running
 
