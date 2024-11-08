@@ -512,11 +512,6 @@ class AStar_GameState:
         return neighbors
 
 
-
-
-
-
-
     def calculate_move_cost(self, boxes, data):
         """
         Calculate the cost of the current move based on the weight of the box being pushed.
