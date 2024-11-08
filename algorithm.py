@@ -85,7 +85,7 @@ class Manager_Algorithm:
         :return: the solution path and number of nodes explored from A* search
         """
         # Initialize A*
-        astar_game_state = AStar(player_position, boxes, self.data, 15)
+        astar_game_state = AStar(player_position, boxes, self.data)
 
         # Run A* search using ThreadPoolExecutor to handle asynchronous execution
         with concurrent.futures.ThreadPoolExecutor() as executor:

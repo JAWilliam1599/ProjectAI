@@ -674,13 +674,17 @@ class Actions():
     # Initialize a manager
     self.manager = a.Manager_Algorithm(data=data)
     if chosenAlgo == 1:
-      goal_state, node_counter = self.manager.run_bfs(player_position, boxes)
+        algo_name = "BFS"
+        goal_state, node_counter = self.manager.run_bfs(player_position, boxes)
     elif chosenAlgo == 2:
-      goal_state, node_counter = self.manager.run_dfs(player_position, boxes)
+        algo_name = "DFS"
+        goal_state, node_counter = self.manager.run_dfs(player_position, boxes)
     elif chosenAlgo == 3:
-      goal_state, node_counter = self.manager.run_ucs(player_position, boxes)
+        algo_name = "UCS"
+        goal_state, node_counter = self.manager.run_ucs(player_position, boxes)
     elif chosenAlgo == 4:
-      goal_state, node_counter = self.manager.run_astar(player_position, boxes)
+        algo_name = "A*"
+        goal_state, node_counter = self.manager.run_astar(player_position, boxes)
 
     # Stop measuring time and memory after BFS completes
     end_time = time.time()
@@ -709,10 +713,10 @@ class Actions():
 
       # Other resources
       if (not self.isExit):
-        self.write_to_file("BFS: \n" +
+        self.write_to_file(f"{algo_name}\n"  +
         f"Steps: {self.game_play.step_counter}, Weights: {self.game_play.weight_counter}," + 
         f" Node: {node_counter}, Time (ms): {elapsed_time}, Memory (MB): {current:.2f}\n" +
-        goal_state.string_move)
+        goal_state.string_move +"\n")
     else: 
       gameplay.show_popup("No solution!","#f20707")
 
@@ -726,7 +730,7 @@ class Actions():
 
 # A function to write to the file the string of movement
   def write_to_file(self, content):
-    with open("result.txt", 'w') as file:
+    with open(f"output-{chosenLevel:02}.txt", 'a') as file:
       file.write(content)
 
 # Driver Code
