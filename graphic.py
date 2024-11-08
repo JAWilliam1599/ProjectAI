@@ -291,8 +291,9 @@ class GamePlay(Frame, metaclass=SingletonMeta):
     if self.thread1.is_alive():
       self.after(100, self.check_thread)
     else:
-      if(self.action.done_event):
-        self.action.done_event.set()
+      if(self.action):
+        if(self.action.done_event):
+          self.action.done_event.set()
       self.thread1.join()
 
   def change_pause_btn(self):
@@ -744,5 +745,6 @@ def application():
 
   app.mainloop()
   # if exit in gameplay, app.frame is gameplay
-  app.frame.exit_component()
+  if(app.frame == GamePlay.get_instance()):
+    app.frame.exit_component()
 

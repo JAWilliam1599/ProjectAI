@@ -529,8 +529,7 @@ class AStar_GameState:
                     print(f"Warning: No stone weight for Box {i} at position {box}. Using default weight 1.")
                     move_cost += 1  # Default weight if none is provided
 
-        return move_cost
-
+        return move_cost    
 
     def calculate_heuristic(self, state, goal_state):
         total_heuristic = 0
@@ -554,15 +553,13 @@ class AStar_GameState:
                 total_heuristic += min_weighted_distance + manhattan_distance_to_worker
                 '''
                 print(f"Box {i}: Position = {box}, Min Distance to Goal = {min_weighted_distance}, "
-                  f"Worker Distance = {manhattan_distance_to_worker}, "
-                  f"Total Contribution = {min_weighted_distance + manhattan_distance_to_worker}")'''
+                    f"Worker Distance = {manhattan_distance_to_worker}, "
+                    f"Total Contribution = {min_weighted_distance + manhattan_distance_to_worker}")'''
         #print(f"Total {total_heuristic}")
         if boxes_not_on_target > 0:
             return total_heuristic / boxes_not_on_target
         else:
             return 0  # All boxes are on target, heuristic is 0
-
-
 
     def __lt__(self, other):
         """
@@ -620,7 +617,7 @@ class AStar:
 
             # Generate neighbors and explore them, passing closed_set to avoid redundant states
             neighbors = current_state.get_neighbors(self.data)
-            self.node_count += len(neighbors)
+            self.node_count += len(neighbors) # qq j đây, mỗi cái được tạo thì là bằng 0, + neighbor thì cùng lắm là 4
 
             for _, neighbor in neighbors:
                 # Check if this neighbor has not been visited before
