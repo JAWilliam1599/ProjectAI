@@ -88,7 +88,7 @@ class Manager_Algorithm:
         :return: the solution path and number of nodes explored from A* search
         """
         # Initialize A*
-        astar_game_state = AStar(player_position, boxes, self.data, 6)
+        astar_game_state = AStar(player_position, boxes, self.data)
 
         # Run A* search using ThreadPoolExecutor to handle asynchronous execution
         with concurrent.futures.ThreadPoolExecutor() as executor:
@@ -304,7 +304,6 @@ class DFS_GameState:
         return state.get_neighbors(data)
 
 ### UCS--------------------------------------------------------------------------------------------
-import heapq
 
 class UCS_GameState:
     """
@@ -436,7 +435,6 @@ class UCS_GameState:
         return None, data.node_count
 
 
-    
 
 ### A*---------------------------------------------------------------------------------------------
 
@@ -467,7 +465,7 @@ class AStar_GameState:
         """
         return all(box in goal_state for box in self.boxes)
 
-    def get_neighbors(self, data):
+    def get_neighbors(self, data, closed_set):
         """
         Get possible next states after the player moves and pushes boxes.
         Returns a list of AStar_GameState objects.
@@ -491,28 +489,41 @@ class AStar_GameState:
                 if boxes != self.boxes:
                     move_direction = move_direction.upper()
 
-                # Calculate the g-cost (path cost so far) and the heuristic h-cost
-                move_cost = self.calculate_move_cost(boxes, data)
-                new_g_cost = self.g_cost + move_cost
-                new_string_move = self.string_move + move_direction
+                # Check if the new state (player position + boxes) has been explored
+                new_state_tuple = (
+                    tuple(new_player_pos),
+                    tuple(tuple(box) for box in boxes)
+                )
 
-                # Create a new state with updated costs and moves
-                new_state = AStar_GameState(new_player_pos, boxes, new_string_move, new_g_cost, self, data)
+                if new_state_tuple not in closed_set:
+                    # Calculate the g-cost (path cost so far) and the heuristic h-cost
+                    move_cost = self.calculate_move_cost(boxes, data)
+                    new_g_cost = self.g_cost + move_cost
+                    new_string_move = self.string_move + move_direction
 
-                # Debugging output for neighbor generation
-                print(f"Generated move {move_direction} to position {new_player_pos}, cost: {new_g_cost}, "
-                    f"f_cost: {new_state.f_cost}")
+                    # Create a new state with updated costs and moves
+                    new_state = AStar_GameState(new_player_pos, boxes, new_string_move, new_g_cost, self, data)
 
-                # Add the new state to the neighbors list
-                neighbors.append((new_state.f_cost, new_state))
+                    # Debugging output for neighbor generation
+                    debug_message = (f"Generated move {move_direction} to position {new_player_pos}, "
+                                     f"cost: {new_g_cost}, f_cost: {new_state.f_cost}\n")
+
+                    # Write to file
+                    with open("astar_debug_log.txt", "a") as debug_file:
+                        debug_file.write(debug_message)
+
+                    # Add the new state to the neighbors list
+                    neighbors.append((new_state.f_cost, new_state))
 
             # If the move was invalid, skip to the next direction
             else:
-                #print(f"Skipping move {move_direction} from {(row, col)} due to invalid action.")
                 continue
 
-        print(f"Generated {len(neighbors)} neighbors for player position {self.player_pos}")
+        with open("astar_debug_log.txt", "a") as debug_file:
+            debug_file.write(f"Generated {len(neighbors)} neighbors for player position {self.player_pos}\n")
         return neighbors
+
+
 
 
     def calculate_move_cost(self, boxes, data):
@@ -534,7 +545,6 @@ class AStar_GameState:
 
         return move_cost    
 
-    
     def calculate_heuristic(self, state, goal_state): 
         """
         Calculate a heuristic for the Sokoban puzzle that minimizes the total weighted distance between boxes and goals.
@@ -544,7 +554,8 @@ class AStar_GameState:
         num_goals = len(goal_state)
         distance_matrix = []
 
-        print("Calculating heuristic...")
+        with open("astar_debug_log.txt", "a") as debug_file:
+            debug_file.write("Calculating heuristic...\n")
         # Calculate the weighted Manhattan distances between each box and each goal
         for i, box in enumerate(state.boxes):
             row = []
@@ -553,27 +564,32 @@ class AStar_GameState:
                 weight = self.data.stone_weights[i] if i < len(self.data.stone_weights) else 1  # Default weight is 1
                 weighted_distance = manhattan_distance * weight
                 row.append(weighted_distance)
-                print(f"Box {i} at {box} to Goal {goal} -> Manhattan Distance: {manhattan_distance}, "
-                    f"Weight: {weight}, Weighted Distance: {weighted_distance}")
+                with open("astar_debug_log.txt", "a") as debug_file:
+                    debug_file.write(f"Box {i} at {box} to Goal {goal} -> Manhattan Distance: {manhattan_distance}, "
+                    f"Weight: {weight}, Weighted Distance: {weighted_distance}\n")
             distance_matrix.append(row)
 
         # Use the Hungarian algorithm to find the minimum-cost assignment of boxes to goals
         box_indices, goal_indices = scipy.optimize.linear_sum_assignment(distance_matrix)
         total_weighted_distance = sum(distance_matrix[box][goal] for box, goal in zip(box_indices, goal_indices))
 
-        print("Optimal box-goal assignments:")
+        with open("astar_debug_log.txt", "a") as debug_file:
+            debug_file.write("Optimal box-goal assignments:\n")
         for box, goal in zip(box_indices, goal_indices):
-            print(f"Box {box} assigned to Goal {goal} with cost: {distance_matrix[box][goal]}")
+            with open("astar_debug_log.txt", "a") as debug_file:
+                debug_file.write(f"Box {box} assigned to Goal {goal} with cost: {distance_matrix[box][goal]}\n")
 
         # Calculate the minimum distance between the worker and any box for the heuristic
         robot_box_distances = [
             abs(state.player_pos[0] - box[0]) + abs(state.player_pos[1] - box[1])
-            for box in state.boxes
+            for box in state.boxes if box not in goal_state  # Ignore boxes on goals
         ]
         min_robot_box_distance = min(robot_box_distances) if robot_box_distances else 0
 
-        print(f"Minimum distance between robot and nearest box: {min_robot_box_distance}")
-        print(f"Total weighted distance: {total_weighted_distance}, Total heuristic: {total_weighted_distance + min_robot_box_distance}")
+        with open("astar_debug_log.txt", "a") as debug_file:
+            debug_file.write(f"Minimum distance between robot and nearest box: {min_robot_box_distance}\n")
+        with open("astar_debug_log.txt", "a") as debug_file:
+            debug_file.write(f"Total weighted distance: {total_weighted_distance}, Total heuristic: {total_weighted_distance + min_robot_box_distance}\n")
 
         # Return the total cost as the heuristic
         return total_weighted_distance + min_robot_box_distance
@@ -599,8 +615,9 @@ class AStar:
         # Initialize the start node (initial state)
         start_node = AStar_GameState(start_player_pos, start_boxes, "", 0, None, data)
         heapq.heappush(self.open_list, (start_node.f_cost, start_node))
-        print(f"Start point: Player Position = {start_node.player_pos}, "
-                  f"Boxes = {start_node.boxes}, Goals = {data.goal_state}, f_cost = {start_node.f_cost}")
+        with open("astar_debug_log.txt", "a") as debug_file:
+            debug_file.write(f"Start point: Player Position = {start_node.player_pos}, "
+                  f"Boxes = {start_node.boxes}, Goals = {data.goal_state}, f_cost = {start_node.f_cost}\n")
     def search(self, shared_stop_event):
         """
         Perform A* search to find the optimal path.
@@ -617,12 +634,14 @@ class AStar:
             # Get the state with the lowest f-cost
             f_cost, current_state = heapq.heappop(self.open_list)
 
-            print(f"Exploring state: Player Position = {current_state.player_pos}, "
-                f"Boxes = {current_state.boxes}, f_cost = {current_state.f_cost}")
+            with open("astar_debug_log.txt", "a") as debug_file:
+                debug_file.write(f"Exploring state: Player Position = {current_state.player_pos}, "
+                f"Boxes = {current_state.boxes}, f_cost = {current_state.f_cost}\n")
 
             # If we reach the goal state, return the solution (string_move) and node count
             if current_state.is_goal_state(self.data.goal_state):
-                print("Goal reached!")
+                with open("astar_debug_log.txt", "a") as debug_file:
+                    debug_file.write("Goal reached!")
                 print(f"Solution path: {current_state.string_move}")
                 return current_state, self.node_count  # Return both the solution and node count
 
@@ -633,7 +652,7 @@ class AStar:
             ))
 
             # Generate neighbors and explore them, passing closed_set to avoid redundant states
-            neighbors = current_state.get_neighbors(self.data)
+            neighbors = current_state.get_neighbors(self.data, self.closed_set)
             self.node_count += len(neighbors) # qq j đây, mỗi cái được tạo thì là bằng 0, + neighbor thì cùng lắm là 4
 
             for _, neighbor in neighbors:
@@ -642,7 +661,7 @@ class AStar:
 
                 if (tuple(neighbor.player_pos), neighbor_boxes_tuple) not in self.closed_set:
                     heapq.heappush(self.open_list, (
-                        neighbor.f_cost,  # Use the precomputed f_cost (g_cost + h_cost)
+                        neighbor.f_cost,  
                         neighbor
                     ))
 
