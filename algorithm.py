@@ -1,5 +1,5 @@
 from collections import deque
-from multiprocessing import Manager, Pool
+import multiprocessing
 import concurrent.futures
 import threading
 import heapq
@@ -20,7 +20,7 @@ class Initialized_data:
         Walls is a list of list of row and column [[row, column], [row, column],...] representing the walls in the game\n
         Goal state is a list of list of row and column [[row, column], [row, column],...]
         """
-        self.walls = walls
+        self.walls = set(map(tuple, walls))
         self.goal_state = goal_state
         self.stone_weights = stone_weights
         self.node_count = 0
@@ -38,7 +38,7 @@ class Manager_Algorithm:
         """
         self.shared_stop_event = threading.Event()
         self.data = data
-        self.manager = Manager()
+        self.manager = multiprocessing.Manager()
         self.shared_visited_list = self.manager.list()
         self.pool = None
 
@@ -50,9 +50,9 @@ class Manager_Algorithm:
         :return: the goal state and the number of nodes explored
         """
         game_state = BFS_GameState(player_position, boxes)
-        self.pool = Pool(processes=16)
+        self.pool = multiprocessing.Pool(processes=16)
         with concurrent.futures.ThreadPoolExecutor() as executor:
-            future = executor.submit(game_state.bfs, self.data, self.shared_visited_list, self.shared_stop_event, self.pool)
+            future = executor.submit(game_state.parallel_bfs, self.data, self.pool)
             goal_state, node_counter = future.result()  # Wait for BFS to complete
             return goal_state, node_counter
 
@@ -64,7 +64,7 @@ class Manager_Algorithm:
         :return: the goal state and the number of nodes explored
         """
         game_state = DFS_GameState(player_position, boxes)
-        self.pool = Pool(processes=16)
+        self.pool = multiprocessing.Pool(processes=16)
         with concurrent.futures.ThreadPoolExecutor() as executor:
             future = executor.submit(game_state.dfs, self.data, self.shared_visited_list, self.shared_stop_event, self.pool)
             goal_state, node_counter = future.result()  # Wait for BFS to complete
@@ -102,6 +102,7 @@ class Manager_Algorithm:
         """
         self.shared_stop_event.set()  # Signal all GameStates to stop
 
+
 ### BFS--------------------------------------------------------------------------------------------
 class BFS_GameState:
     """
@@ -122,84 +123,79 @@ class BFS_GameState:
         # Check if all the boxes are on the goal
         return goal_state == self.boxes # Is the goal state is all the boxes is on the goal
         
-    
     def get_neighbors(self, data):
         """
         Get the possible next states after the player moves\n
         Returns a list of BFS_GameState objects
         """
         row, col = self.player_pos
-        directions = [(-1,0), (1,0), (0,-1), (0,1)] # Up, down, left, right
+        directions = [(-1,0, "u"), (1,0, "d"), (0,-1, "l"), (0,1, "r")] # Up, down, left, right
         neighbors = []
 
         # Check up, down, left, right
-        for r, c in directions:
+        for r, c, character in directions:
             # Check if the next position is valid
             boxes = self.boxes.copy()
             result = action(row, col, boxes, data, r, c)
-            if (result):
-                # Create a new player position
-                new_row, new_col = row + r, col + c
-                new_players_position = [new_row, new_col]
+            if (result==0): continue
 
-                # Update the string representation of the move
-                move_direction = ""
-                if r == -1: move_direction = "u"
-                elif r == 1: move_direction = "d"
-                elif c == -1: move_direction = "l"
-                elif c == 1: move_direction = "r"
+            if (result == 2):
+                character = character.upper()
 
-                # Check if a box is moved
-                if boxes != self.boxes:
-                    move_direction = move_direction.upper()  # Capitalize the move direction when a box is moved
-
-                new_string_move = self.string_move + move_direction
-
-                # Create a new state
-                new_state = BFS_GameState(new_players_position, boxes, new_string_move)
-                neighbors.append(new_state)
-            else: continue
+            # Create a new state
+            new_state = BFS_GameState([row + r, col + c], boxes, self.string_move + character)
+            neighbors.append(new_state)
 
         return neighbors
     
-    def bfs(self, data, visited, shared_stop_event, pool):
+    def bfs_process(self, state, data, visited, shared_stop_event):
         """
         Breadth-first search algorithm to find the shortest path to the goal state
         """
-        queue = deque([self])
-
-        # Use the shared list
-        visited.append((self.player_pos, tuple(self.boxes)))
+        queue = deque([state])
 
         while not shared_stop_event.is_set() and queue:
-            batch_size = min(len(queue), 16)
-            current_states = [queue.popleft() for _ in range(batch_size)]
-            
-            results = pool.starmap(self.generate_state, [(state, data) for state in current_states])
+            current_state = queue.popleft()
 
-            for neighbors in results:
-                for neighbor in neighbors:
-                    if neighbor is None: continue
+            neighbors = current_state.get_neighbors(data)
 
-                    if neighbor.is_goal_state(data.goal_state):
-                        print("done")
-                        queue.clear()
-                        return neighbor, data.node_count
+            for neighbor in neighbors:
+                data.node_count += 1
+                if neighbor is None: continue
 
-                    # Only add the neighbor to the visited list if it hasn't been added yet
-                    visited_list = [neighbor.player_pos, neighbor.boxes]
-                    if visited_list not in visited:
-                        visited.append(visited_list)
-                        queue.append(neighbor)
-                        data.node_count += 1
-                        print(neighbor.string_move)
+                if neighbor.is_goal_state(data.goal_state):
+                    print("done")
+                    queue.clear()
+                    shared_stop_event.set()
+                    return neighbor, data.node_count
+
+                # Only add the neighbor to the visited list if it hasn't been added yet
+                visited_list = [neighbor.player_pos, neighbor.boxes]
+
+                if visited_list not in visited:
+                    visited.append(visited_list)
+                    queue.append(neighbor)
+
         return None, data.node_count
     
-    def generate_state(self, state, data):
-        """
-        This function is only for multiprocessing
-        """
-        return state.get_neighbors(data)
+    def parallel_bfs(self, data, pool):
+        with multiprocessing.Manager() as manager:
+            visited = manager.list()
+            visited.append([self.player_pos, self.boxes])
+            shared_stop_event = manager.Event()
+
+            worker_args = [(self, data, visited, shared_stop_event) for _ in range(16)]
+            
+            # Use starmap to launch parallel workers
+            results = pool.starmap(self.bfs_process, worker_args)
+            
+            # Collect results from the worker processes
+            for result in results:
+                neighbor, node_count = result
+                if neighbor is not None:
+                    return neighbor, node_count
+            
+            return None, data.node_count
 
 ### DFS--------------------------------------------------------------------------------------------
 class DFS_GameState:
@@ -225,40 +221,25 @@ class DFS_GameState:
     def get_neighbors(self, data):
         """
         Get the possible next states after the player moves\n
-        Returns a list of BFS_GameState objects
+        Returns a list of DFS_GameState objects
         """
         row, col = self.player_pos
-        directions = [(-1,0), (1,0), (0,-1), (0,1)] # Up, down, left, right
+        directions = [(-1,0, "u"), (1,0, "d"), (0,-1, "l"), (0,1, "r")] # Up, down, left, right
         neighbors = []
 
         # Check up, down, left, right
-        for r, c in directions:
+        for r, c, character in directions:
             # Check if the next position is valid
             boxes = self.boxes.copy()
             result = action(row, col, boxes, data, r, c)
-            if (result):
-                # Create a new player position
-                new_row, new_col = row + r, col + c
-                new_players_position = [new_row, new_col]
+            if (result==0): continue
 
-                # Update the string representation of the move
-                move_direction = ""
-                if r == -1: move_direction = "u"
-                elif r == 1: move_direction = "d"
-                elif c == -1: move_direction = "l"
-                elif c == 1: move_direction = "r"
+            if (result == 2):
+                character = character.upper()
 
-                # Check if a box is moved
-                if boxes != self.boxes:
-                    move_direction = move_direction.upper()  # Capitalize the move direction when a box is moved
-
-                new_string_move = self.string_move + move_direction
-
-                # Create a new state
-                new_state = DFS_GameState(new_players_position, boxes, new_string_move)
-                data.node_count += 1 # Count all the nodes that being generated
-                neighbors.append(new_state)
-            else: continue
+            # Create a new state
+            new_state = BFS_GameState([row + r, col + c], boxes, self.string_move + character)
+            neighbors.append(new_state)
 
         return neighbors
     
@@ -344,7 +325,7 @@ class UCS_GameState:
 
         if [new_row, new_col] in boxes:
             new_box_row, new_box_col = new_row + r, new_col + c
-            if [new_box_row, new_box_col] in data.walls or [new_box_row, new_box_col] in boxes:
+            if (new_box_row, new_box_col) in data.walls or [new_box_row, new_box_col] in boxes:
                 return False, None
 
             # Get the index of the box and its weight from stone_weights
@@ -374,7 +355,7 @@ class UCS_GameState:
             new_row, new_col = row + r, col + c
 
             # Check if the next position is a wall
-            if [new_row, new_col] in data.walls:  # Skip if it's a wall
+            if (new_row, new_col) in data.walls:  # Skip if it's a wall
                 continue
 
             # Create a copy of boxes and attempt to move in the direction
@@ -476,18 +457,14 @@ class AStar_GameState:
 
         # Check up, down, left, right
         for r, c, move_direction in directions:
-            boxes = self.boxes.copy()
-
             # Perform the action to determine if the move is valid and update boxes if needed
+            boxes = self.boxes.copy()
             result = action(row, col, boxes, data, r, c)
-            if result:
-                # Create a new player position
-                new_row, new_col = row + r, col + c
-                new_player_pos = [new_row, new_col]
+            if result == 0: continue
 
-                # If a box was moved, capitalize the move direction
-                if boxes != self.boxes:
-                    move_direction = move_direction.upper()
+            # If a box was moved, capitalize the move direction
+            if result == 2:
+                move_direction = move_direction.upper()
 
                 # Check if the new state (player position + boxes) has been explored
                 new_state_tuple = (
@@ -551,8 +528,6 @@ class AStar_GameState:
         This method uses an assignment approach to find the optimal box-goal pairing and accounts for the player's position 
         relative to the box in order to push it toward its goal.
         """
-        num_boxes = len(state.boxes)
-        num_goals = len(goal_state)
         distance_matrix = []
 
         with open("astar_debug_log.txt", "a") as debug_file:
@@ -572,7 +547,7 @@ class AStar_GameState:
             distance_matrix.append(row)
 
         # Use the Hungarian algorithm to find the minimum-cost assignment of boxes to goals
-        box_indices, goal_indices = scipy.optimize.linear_sum_assignment(distance_matrix)
+        box_indices, goal_indices = linear_sum_assignment(distance_matrix)
         total_weighted_distance = sum(distance_matrix[box][goal] for box, goal in zip(box_indices, goal_indices))
 
         with open("astar_debug_log.txt", "a") as debug_file:
@@ -690,39 +665,56 @@ class AStar:
         return None, self.node_count  # No solution found
 
 
-
-
 ### Action-----------------------------------------------------------------------------------------
 
 def action(row, col, boxes, data, move_ud, move_lr):
     """
-    Move the player to the next position\n
-    Returns 2 if the move and box is successful\n
-    Returns 1 if the only move is successful\n
-    Returns 0 if the move is not successful\n
+    Move the player to the next position
+    Returns:
+      2 if the move and box are both successful (box moved)
+      1 if the player moved without moving a box
+      0 if the move is not successful (blocked by wall or other conditions)
     """
     walls = data.walls
     new_player_row = row + move_ud
     new_player_col = col + move_lr
-    # Check if the next position is a wall
-    if [new_player_row, new_player_col] in walls:
-        return False
 
-    # Check if the next position is a box
-    for i, [box_row, box_col] in enumerate(boxes):
+    # Check if the next player position is a wall
+    if (new_player_row, new_player_col) in walls:
+        return 0
+
+    # Check if the player is moving into a box
+    for i, (box_row, box_col) in enumerate(boxes):
         if [box_row, box_col] == [new_player_row, new_player_col]:
-            # Calculate the position of the box after the move
+            # Calculate the new box position after the move
             new_box_row = box_row + move_ud
             new_box_col = box_col + move_lr
             
-            # Check if the new box position is a wall
-            if [new_box_row, new_box_col] in walls or [new_box_row, new_box_col] in boxes:
-                return False
+            # Check if the new box position is a wall or another box
+            if (new_box_row, new_box_col) in walls or [new_box_row, new_box_col] in boxes:
+                return 0  # Box cannot be moved here, blocked by wall or another box
             
-            # Move the box
-            boxes[i] = [new_box_row, new_box_col]
-            return True
-   
-    # Move the player
-    return True
+            # Check if the box is trapped
+            if isTrapped(new_box_row, new_box_col, move_ud, move_lr, walls, data.goal_state):
+                return 0  # Box is trapped, cannot move it
 
+            boxes[i] = [new_box_row, new_box_col]
+            return 2
+
+    # If no box is moved, the player can move freely
+    return 1
+
+def isTrapped(box_row, box_col, move_ud, move_lr, walls, goal_state):
+    """
+    Check if the new box position is trapped by the player
+    """
+    #Move up, down
+    if [box_row, box_col] in goal_state: return False
+    if (move_ud != 0):
+        if (box_row + move_ud, box_col) in walls and (box_row, box_col + 1) in walls: return True
+        if (box_row + move_ud, box_col) in walls and (box_row, box_col - 1) in walls: return True
+        return False
+        
+    #Move left, right
+    if (box_row, box_col + move_lr) in walls and (box_row + 1, box_col) in walls: return True
+    if (box_row, box_col + move_lr) in walls and (box_row - 1, box_col) in walls: return True
