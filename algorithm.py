@@ -548,7 +548,8 @@ class AStar_GameState:
     def calculate_heuristic(self, state, goal_state): 
         """
         Calculate a heuristic for the Sokoban puzzle that minimizes the total weighted distance between boxes and goals.
-        This method uses an assignment approach to find the optimal box-goal pairing.
+        This method uses an assignment approach to find the optimal box-goal pairing and accounts for the player's position 
+        relative to the box in order to push it toward its goal.
         """
         num_boxes = len(state.boxes)
         num_goals = len(goal_state)
@@ -556,6 +557,7 @@ class AStar_GameState:
 
         with open("astar_debug_log.txt", "a") as debug_file:
             debug_file.write("Calculating heuristic...\n")
+
         # Calculate the weighted Manhattan distances between each box and each goal
         for i, box in enumerate(state.boxes):
             row = []
@@ -566,7 +568,7 @@ class AStar_GameState:
                 row.append(weighted_distance)
                 with open("astar_debug_log.txt", "a") as debug_file:
                     debug_file.write(f"Box {i} at {box} to Goal {goal} -> Manhattan Distance: {manhattan_distance}, "
-                    f"Weight: {weight}, Weighted Distance: {weighted_distance}\n")
+                                    f"Weight: {weight}, Weighted Distance: {weighted_distance}\n")
             distance_matrix.append(row)
 
         # Use the Hungarian algorithm to find the minimum-cost assignment of boxes to goals
@@ -580,19 +582,36 @@ class AStar_GameState:
                 debug_file.write(f"Box {box} assigned to Goal {goal} with cost: {distance_matrix[box][goal]}\n")
 
         # Calculate the minimum distance between the worker and any box for the heuristic
-        robot_box_distances = [
-            abs(state.player_pos[0] - box[0]) + abs(state.player_pos[1] - box[1])
-            for box in state.boxes if box not in goal_state  # Ignore boxes on goals
-        ]
+        robot_box_distances = []
+        for i, box in enumerate(state.boxes):
+            if box not in goal_state:  # Ignore boxes that are already on goals
+                goal = goal_state[goal_indices[i]]  # The goal assigned to this box
+
+                # Determine the direction the box must move towards its goal
+                if goal[1] < box[1]:  # Goal is to the left of the box -> player must be to the right
+                    adjacent_position = (box[0], box[1] + 1)
+                elif goal[1] > box[1]:  # Goal is to the right of the box -> player must be to the left
+                    adjacent_position = (box[0], box[1] - 1)
+                elif goal[0] < box[0]:  # Goal is above the box -> player must be below
+                    adjacent_position = (box[0] + 1, box[1])
+                elif goal[0] > box[0]:  # Goal is below the box -> player must be above
+                    adjacent_position = (box[0] - 1, box[1])
+
+                # Calculate the Manhattan distance to the adjacent position without checking for validity
+                distance = abs(state.player_pos[0] - adjacent_position[0]) + abs(state.player_pos[1] - adjacent_position[1])
+                robot_box_distances.append(distance)
+
         min_robot_box_distance = min(robot_box_distances) if robot_box_distances else 0
 
         with open("astar_debug_log.txt", "a") as debug_file:
-            debug_file.write(f"Minimum distance between robot and nearest box: {min_robot_box_distance}\n")
+            debug_file.write(f"Minimum distance between robot and nearest box (adjacent position): {min_robot_box_distance}\n")
         with open("astar_debug_log.txt", "a") as debug_file:
             debug_file.write(f"Total weighted distance: {total_weighted_distance}, Total heuristic: {total_weighted_distance + min_robot_box_distance}\n")
 
         # Return the total cost as the heuristic
         return total_weighted_distance + min_robot_box_distance
+
+
 
     def __lt__(self, other):
         """
