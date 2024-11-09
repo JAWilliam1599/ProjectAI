@@ -4,6 +4,9 @@ import concurrent.futures
 import threading
 import heapq
 from queue import PriorityQueue
+import numpy as np
+import scipy.optimize   # Requires SciPy library
+from scipy.optimize import linear_sum_assignment
 
 data = None
 ### Data--------------------------------------------------------------------------------------------
@@ -85,7 +88,7 @@ class Manager_Algorithm:
         :return: the solution path and number of nodes explored from A* search
         """
         # Initialize A*
-        astar_game_state = AStar(player_position, boxes, self.data)
+        astar_game_state = AStar(player_position, boxes, self.data, 6)
 
         # Run A* search using ThreadPoolExecutor to handle asynchronous execution
         with concurrent.futures.ThreadPoolExecutor() as executor:
@@ -532,35 +535,49 @@ class AStar_GameState:
         return move_cost
 
 
-    def calculate_heuristic(self, state, goal_state):
-        total_heuristic = 0
-        boxes_not_on_target = 0
+    
+    def calculate_heuristic(self, state, goal_state): 
+        """
+        Calculate a heuristic for the Sokoban puzzle that minimizes the total weighted distance between boxes and goals.
+        This method uses an assignment approach to find the optimal box-goal pairing.
+        """
+        num_boxes = len(state.boxes)
+        num_goals = len(goal_state)
+        distance_matrix = []
 
+        print("Calculating heuristic...")
+        # Calculate the weighted Manhattan distances between each box and each goal
         for i, box in enumerate(state.boxes):
-            if box != goal_state[i]:  # If the box is not on its target
-                boxes_not_on_target += 1
+            row = []
+            for goal in goal_state:
+                manhattan_distance = abs(box[0] - goal[0]) + abs(box[1] - goal[1])
+                weight = self.data.stone_weights[i] if i < len(self.data.stone_weights) else 1  # Default weight is 1
+                weighted_distance = manhattan_distance * weight
+                row.append(weighted_distance)
+                print(f"Box {i} at {box} to Goal {goal} -> Manhattan Distance: {manhattan_distance}, "
+                    f"Weight: {weight}, Weighted Distance: {weighted_distance}")
+            distance_matrix.append(row)
 
-                min_weighted_distance = float('inf')
-                for goal_pos in goal_state:
-                    manhattan_distance_to_goal = abs(box[0] - goal_pos[0]) + abs(box[1] - goal_pos[1])
-                    box_weight = self.data.stone_weights[i] if i < len(self.data.stone_weights) else 1  # Default weight is 1
-                    weighted_distance_to_goal = manhattan_distance_to_goal * box_weight
-                    
-                    if weighted_distance_to_goal < min_weighted_distance:
-                        min_weighted_distance = weighted_distance_to_goal
+        # Use the Hungarian algorithm to find the minimum-cost assignment of boxes to goals
+        box_indices, goal_indices = scipy.optimize.linear_sum_assignment(distance_matrix)
+        total_weighted_distance = sum(distance_matrix[box][goal] for box, goal in zip(box_indices, goal_indices))
 
-                manhattan_distance_to_worker = abs(state.player_pos[0] - box[0]) + abs(state.player_pos[1] - box[1])
+        print("Optimal box-goal assignments:")
+        for box, goal in zip(box_indices, goal_indices):
+            print(f"Box {box} assigned to Goal {goal} with cost: {distance_matrix[box][goal]}")
 
-                total_heuristic += min_weighted_distance + manhattan_distance_to_worker
-                '''
-                print(f"Box {i}: Position = {box}, Min Distance to Goal = {min_weighted_distance}, "
-                  f"Worker Distance = {manhattan_distance_to_worker}, "
-                  f"Total Contribution = {min_weighted_distance + manhattan_distance_to_worker}")'''
-        #print(f"Total {total_heuristic}")
-        if boxes_not_on_target > 0:
-            return total_heuristic / boxes_not_on_target
-        else:
-            return 0  # All boxes are on target, heuristic is 0
+        # Calculate the minimum distance between the worker and any box for the heuristic
+        robot_box_distances = [
+            abs(state.player_pos[0] - box[0]) + abs(state.player_pos[1] - box[1])
+            for box in state.boxes
+        ]
+        min_robot_box_distance = min(robot_box_distances) if robot_box_distances else 0
+
+        print(f"Minimum distance between robot and nearest box: {min_robot_box_distance}")
+        print(f"Total weighted distance: {total_weighted_distance}, Total heuristic: {total_weighted_distance + min_robot_box_distance}")
+
+        # Return the total cost as the heuristic
+        return total_weighted_distance + min_robot_box_distance
 
 
 
