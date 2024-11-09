@@ -174,13 +174,6 @@ class BFS_GameState:
         while not shared_stop_event.is_set() and queue:
             batch_size = min(len(queue), 16)
             current_states = [queue.popleft() for _ in range(batch_size)]
-
-            # Check if in the batch, there is a goal state or not
-            for state in current_states:
-                if state.is_goal_state(data.goal_state): 
-                    print("done")
-                    queue.clear()
-                    return state, data.node_count
             
             results = pool.starmap(self.generate_state, [(state, data) for state in current_states])
 
@@ -188,12 +181,18 @@ class BFS_GameState:
                 for neighbor in neighbors:
                     if neighbor is None: continue
 
+                    if neighbor.is_goal_state(data.goal_state):
+                        print("done")
+                        queue.clear()
+                        return neighbor, data.node_count
+
                     # Only add the neighbor to the visited list if it hasn't been added yet
                     visited_list = [neighbor.player_pos, neighbor.boxes]
                     if visited_list not in visited:
                         visited.append(visited_list)
                         queue.append(neighbor)
                         data.node_count += 1
+                        print(neighbor.string_move)
         return None, data.node_count
     
     def generate_state(self, state, data):
@@ -295,6 +294,7 @@ class DFS_GameState:
                         visited.append(visited_list)
                         queue.append(neighbor)
                         data.node_count += 1
+                        print(neighbor.string_move)
         return None, data.node_count
     
     def generate_state(self, state, data):
@@ -532,8 +532,7 @@ class AStar_GameState:
                     print(f"Warning: No stone weight for Box {i} at position {box}. Using default weight 1.")
                     move_cost += 1  # Default weight if none is provided
 
-        return move_cost
-
+        return move_cost    
 
     
     def calculate_heuristic(self, state, goal_state): 
@@ -578,8 +577,6 @@ class AStar_GameState:
 
         # Return the total cost as the heuristic
         return total_weighted_distance + min_robot_box_distance
-
-
 
     def __lt__(self, other):
         """
@@ -637,7 +634,7 @@ class AStar:
 
             # Generate neighbors and explore them, passing closed_set to avoid redundant states
             neighbors = current_state.get_neighbors(self.data)
-            self.node_count += len(neighbors)
+            self.node_count += len(neighbors) # qq j đây, mỗi cái được tạo thì là bằng 0, + neighbor thì cùng lắm là 4
 
             for _, neighbor in neighbors:
                 # Check if this neighbor has not been visited before

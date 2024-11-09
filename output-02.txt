@@ -1,6 +1,0 @@
-A*
-Steps: 16, Weights: 711, Node: 455860, Time (ms): 399373.98648262024, Memory (MB): 0.00
-uLulDrrRRRRRRurD
-A*
-Steps: 16, Weights: 711, Node: 157650, Time (ms): 169631.8962574005, Memory (MB): 0.00
-uLulDrrRRRRRRurD
