@@ -2,7 +2,6 @@
 from tkinter import *
 import os
 import psutil
-import threading
 import algorithm as a
 import time
   

@@ -1,0 +1,12 @@
+BFS
+Steps: 0, Weights: 0, Node: 246, Time (ms): 1450.8264064788818, Memory (MB): 77.13
+No solution
+DFS
+Steps: 0, Weights: 0, Node: 246, Time (ms): 1431.089162826538, Memory (MB): 77.17
+No solution
+UCS
+Steps: 0, Weights: 0, Node: 1840, Time (ms): 379.7571659088135, Memory (MB): 77.30
+No solution
+A*
+Steps: 0, Weights: 0, Node: 325, Time (ms): 381.67619705200195, Memory (MB): 76.91
+No solution
