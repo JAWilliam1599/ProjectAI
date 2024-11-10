@@ -425,25 +425,24 @@ class UCS_GameState:
 ### A*---------------------------------------------------------------------------------------------
 
 class AStar_GameState:
-    def __init__(self, player_pos, boxes, string_move="", g_cost=0, parent=None, data=None):
+    def __init__(self, player_pos, boxes, string_move="", g_cost=0, data=None):
         """
-        Initialize the game state with player's position, boxes, g-cost, and parent reference.
+        Initialize the game state with player's position, boxes, g-cost and data of the map.
         """
         self.player_pos = player_pos
         self.boxes = boxes
         self.string_move = string_move  # Move string (e.g., "RURU")
-        self.g_cost = g_cost  # Cost to reach this state
-        self.parent = parent  # Parent node for path reconstruction
         self.data = data  # Reference to Initialized_data instance
         
-        # Calculate heuristic cost to the goal state (h_cost)
+        # Cost to reach this state from the start state
+        self.g_cost = g_cost 
+
+        # Heuristic cost
         self.h_cost = self.calculate_heuristic(self, self.data.goal_state)
 
-        # Calculate the total cost (f_cost = g_cost + h_cost)
+        # Total cost (f_cost = g_cost + h_cost)
         self.f_cost = self.g_cost + self.h_cost
         
-        # Move counter for debugging
-        self.move_count = 0  # Start with 0 moves
 
     def is_goal_state(self, goal_state):
         """
@@ -490,14 +489,11 @@ class AStar_GameState:
                 # Create a new state with updated costs and moves
                 new_state = AStar_GameState(new_player_pos, boxes, new_string_move, new_g_cost, self, data)
 
-                
-
                 # Add the new state to the neighbors list
                 neighbors.append((new_state.f_cost, new_state))
 
         
         return neighbors
-
 
 
 
@@ -527,7 +523,7 @@ class AStar_GameState:
         """
         distance_matrix = []
 
-        
+
 
         # Compute weighted Manhattan distances between each box and each goal
         for i, box in enumerate(state.boxes):
@@ -557,15 +553,7 @@ class AStar_GameState:
         ]
         min_robot_box_distance = min(robot_box_distances) if robot_box_distances else 0
 
-        
-
-        # Calculate the heuristic by averaging the total weighted distance over unsolved boxes
-        num_unsolved_boxes = len(unsolved_boxes)
-        averaged_heuristic = (total_weighted_distance + min_robot_box_distance) / num_unsolved_boxes if num_unsolved_boxes else 0
-
-        
-
-        return averaged_heuristic
+        return total_weighted_distance + min_robot_box_distance
 
 
     def __lt__(self, other):
@@ -577,7 +565,7 @@ class AStar_GameState:
 
 
 class AStar:
-    def __init__(self, start_player_pos, start_boxes, data, max_moves=None):
+    def __init__(self, start_player_pos, start_boxes, data):
         self.start_player_pos = start_player_pos
         self.start_boxes = start_boxes
         self.data = data
@@ -585,21 +573,14 @@ class AStar:
         self.open_dict = {}  # Dictionary to track open states by their (player_pos, boxes) key
         self.closed_set = set()  # Explored states
         self.node_count = 0
-        self.max_moves = max_moves
 
         # Initialize the start node (initial state)
-        start_node = AStar_GameState(start_player_pos, start_boxes, "", 0, None, data)
+        start_node = AStar_GameState(start_player_pos, start_boxes, "", 0, data)
         heapq.heappush(self.open_list, (start_node.f_cost, start_node))
         self.open_dict[(tuple(start_node.player_pos), tuple(tuple(box) for box in start_node.boxes))] = start_node
 
     def search(self, shared_stop_event):
-        move_counter = 0
-
         while self.open_list and not shared_stop_event.is_set():
-            if self.max_moves is not None and move_counter >= self.max_moves:
-                print(f"Debugging stop: Reached max moves limit of {self.max_moves}")
-                return None, self.node_count
-
             f_cost, current_state = heapq.heappop(self.open_list)
             key = (tuple(current_state.player_pos), tuple(tuple(box) for box in current_state.boxes))
 
@@ -626,9 +607,7 @@ class AStar:
                     heapq.heappush(self.open_list, (neighbor.f_cost, neighbor))
                     self.open_dict[neighbor_key] = neighbor
 
-            move_counter += 1
-
-        print("No solution found within the move limit.")
+        print("No solution found.")
         return None, self.node_count
 
 ### Action-----------------------------------------------------------------------------------------
