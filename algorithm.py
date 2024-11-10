@@ -5,7 +5,6 @@ import threading
 import heapq
 from queue import PriorityQueue
 import numpy as np
-import scipy.optimize   # Requires SciPy library
 from scipy.optimize import linear_sum_assignment
 
 data = None
@@ -310,12 +309,6 @@ class UCS_GameState:
         """
         return self.g_cost < other.g_cost
 
-    def is_goal_state(self, goal_state):
-        """
-        Check if all the boxes are on the goal positions.
-        """
-        return all(box in goal_state for box in self.boxes)
-
     @staticmethod
     def action(row, col, boxes, data, r, c):
         """
@@ -425,25 +418,24 @@ class UCS_GameState:
 ### A*---------------------------------------------------------------------------------------------
 
 class AStar_GameState:
-    def __init__(self, player_pos, boxes, string_move="", g_cost=0, parent=None, data=None):
+    def __init__(self, player_pos, boxes, string_move="", g_cost=0, data=None):
         """
-        Initialize the game state with player's position, boxes, g-cost, and parent reference.
+        Initialize the game state with player's position, boxes, g-cost and data of the map.
         """
         self.player_pos = player_pos
         self.boxes = boxes
         self.string_move = string_move  # Move string (e.g., "RURU")
-        self.g_cost = g_cost  # Cost to reach this state
-        self.parent = parent  # Parent node for path reconstruction
         self.data = data  # Reference to Initialized_data instance
         
-        # Calculate heuristic cost to the goal state (h_cost)
+        # Cost to reach this state from the start state
+        self.g_cost = g_cost 
+
+        # Heuristic cost
         self.h_cost = self.calculate_heuristic(self, self.data.goal_state)
 
-        # Calculate the total cost (f_cost = g_cost + h_cost)
+        # Total cost (f_cost = g_cost + h_cost)
         self.f_cost = self.g_cost + self.h_cost
         
-        # Move counter for debugging
-        self.move_count = 0  # Start with 0 moves
 
     def is_goal_state(self, goal_state):
         """
@@ -488,7 +480,7 @@ class AStar_GameState:
                 new_string_move = self.string_move + move_direction
 
                 # Create a new state with updated costs and moves
-                new_state = AStar_GameState(new_player_pos, boxes, new_string_move, new_g_cost, self, data)
+                new_state = AStar_GameState(new_player_pos, boxes, new_string_move, new_g_cost, data)
 
                 # Add the new state to the neighbors list
                 neighbors.append((new_state.f_cost, new_state))
@@ -510,15 +502,14 @@ class AStar_GameState:
 
         return move_cost
 
-    from scipy.optimize import linear_sum_assignment
+    
 
     def calculate_heuristic(self, state, goal_state):
         """
         Calculate an admissible and consistent heuristic for the Sokoban puzzle.
         This heuristic considers:
         - The weighted distances between each box and each goal.
-        - The minimum distance between the worker and each unsolved box.
-        - An average of the minimum costs across unsolved boxes to prevent overestimation.
+        - The minimum distance between the player and each unsolved box.
         """
         distance_matrix = []
 
@@ -538,13 +529,13 @@ class AStar_GameState:
         box_indices, goal_indices = linear_sum_assignment(distance_matrix)
         total_weighted_distance = sum(distance_matrix[box][goal] for box, goal in zip(box_indices, goal_indices))
 
-        # Calculate minimum distance between worker and each unsolved box
+        # Calculate minimum distance between player and each unsolved box
         unsolved_boxes = [box for box in state.boxes if box not in goal_state]
-        robot_box_distances = [
+        player_box_distances = [
             abs(state.player_pos[0] - box[0]) + abs(state.player_pos[1] - box[1])
             for box in unsolved_boxes
         ]
-        min_robot_box_distance = min(robot_box_distances) if robot_box_distances else 0
+        min_player_box_distance = min(player_box_distances) if player_box_distances else 0
 
         # Calculate the heuristic by averaging the total weighted distance over unsolved boxes
         num_unsolved_boxes = len(unsolved_boxes)
@@ -560,7 +551,7 @@ class AStar_GameState:
         return self.f_cost < other.f_cost
 
 class AStar:
-    def __init__(self, start_player_pos, start_boxes, data, max_moves=None):
+    def __init__(self, start_player_pos, start_boxes, data):
         self.start_player_pos = start_player_pos
         self.start_boxes = start_boxes
         self.data = data
@@ -568,21 +559,14 @@ class AStar:
         self.open_dict = {}  # Dictionary to track open states by their (player_pos, boxes) key
         self.closed_set = set()  # Explored states
         self.node_count = 0
-        self.max_moves = max_moves
 
         # Initialize the start node (initial state)
-        start_node = AStar_GameState(start_player_pos, start_boxes, "", 0, None, data)
+        start_node = AStar_GameState(start_player_pos, start_boxes, "", 0, data)
         heapq.heappush(self.open_list, (start_node.f_cost, start_node))
         self.open_dict[(tuple(start_node.player_pos), tuple(tuple(box) for box in start_node.boxes))] = start_node
 
     def search(self, shared_stop_event):
-        move_counter = 0
-
         while self.open_list and not shared_stop_event.is_set():
-            if self.max_moves is not None and move_counter >= self.max_moves:
-                print(f"Debugging stop: Reached max moves limit of {self.max_moves}")
-                return None, self.node_count
-
             f_cost, current_state = heapq.heappop(self.open_list)
             key = (tuple(current_state.player_pos), tuple(tuple(box) for box in current_state.boxes))
 
@@ -610,9 +594,7 @@ class AStar:
                     heapq.heappush(self.open_list, (neighbor.f_cost, neighbor))
                     self.open_dict[neighbor_key] = neighbor
 
-            move_counter += 1
-
-        print("No solution found within the move limit.")
+        print("No solution found.")
         return None, self.node_count
 
 ### Action-----------------------------------------------------------------------------------------
