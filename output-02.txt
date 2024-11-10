@@ -4,3 +4,9 @@ uLulDrrRRRRRRurD
 A*
 Steps: 16, Weights: 711, Node: 50836, Time (ms): 560269.8674201965, Memory (MB): 1.00
 uLulDrrRRRRRRurD
+A*
+Steps: 16, Weights: 711, Node: 26759, Time (ms): 166350.0735759735, Memory (MB): 1.00
+uLulDrrRRRRRRurD
+A*
+Steps: 23, Weights: 428, Node: 22907, Time (ms): 5591.053009033203, Memory (MB): 85.12
+lluRurrDrdLLLuRRRRRRRurD
