@@ -1,13 +1,10 @@
 # Import module  
-from multiprocessing import Manager
 from tkinter import *
 import os
-import time
+import psutil
 import threading
 import algorithm as a
-import concurrent.futures
 import time
-import tracemalloc
   
 """
 Note:
@@ -666,7 +663,6 @@ class Actions():
     stone_weights = gameplay.list_rocks_weight  # Assuming stone weights are available
     
     # Start measuring memory and time
-    tracemalloc.start()
     start_time = time.time()
     
     # Initialize the data for BFS
@@ -692,9 +688,7 @@ class Actions():
     elapsed_time = (end_time - start_time)*1000
 
     # Get the current, peak memory usage
-    current, peak = tracemalloc.get_traced_memory()
-    current = current >> 20 # To MB
-    tracemalloc.stop()
+    memUsed = psutil.Process(os.getpid()).memory_info().rss / 1024 ** 2
 
     # Move the player, init a new variable to make sure that string move is unmodified
     if goal_state is not None:
@@ -716,7 +710,7 @@ class Actions():
       if (not self.isExit):
         self.write_to_file(f"{algo_name}\n"  +
         f"Steps: {self.game_play.step_counter}, Weights: {self.game_play.weight_counter}," + 
-        f" Node: {node_counter}, Time (ms): {elapsed_time}, Memory (MB): {current:.2f}\n" +
+        f" Node: {node_counter}, Time (ms): {elapsed_time}, Memory (MB): {memUsed:.2f}\n" +
         goal_state.string_move +"\n")
     else: 
       gameplay.show_popup("No solution!","#f20707")

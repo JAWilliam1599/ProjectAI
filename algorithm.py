@@ -50,7 +50,7 @@ class Manager_Algorithm:
         :return: the goal state and the number of nodes explored
         """
         game_state = BFS_GameState(player_position, boxes)
-        self.pool = multiprocessing.Pool(processes=16)
+        self.pool = multiprocessing.Pool(processes=1)
         with concurrent.futures.ThreadPoolExecutor() as executor:
             future = executor.submit(game_state.parallel_bfs, self.data, self.pool)
             goal_state, node_counter = future.result()  # Wait for BFS to complete
@@ -320,7 +320,7 @@ class UCS_GameState:
         Return if a box was moved and the weight of the moved box (or None if none moved).
         """
         new_row, new_col = row + r, col + c
-        if [new_row, new_col] in data.walls:
+        if (new_row, new_col) in data.walls:
             return False, None
 
         if [new_row, new_col] in boxes:
@@ -333,8 +333,9 @@ class UCS_GameState:
             box_weight = data.stone_weights[box_index]
 
             # Move the box and update the box positions
-            boxes.remove([new_row, new_col])
-            boxes.append([new_box_row, new_box_col])
+            # boxes.remove([new_row, new_col])
+            # boxes.append([new_box_row, new_box_col])
+            boxes[box_index] = [new_box_row, new_box_col]
 
             # Return True (box moved) and the weight of the box
             return True, box_weight
@@ -395,6 +396,11 @@ class UCS_GameState:
 
         while priority_queue:
             current_cost, current_state = heapq.heappop(priority_queue)
+
+            if(current_state.string_move.startswith("uurDrdLLLUluRRRRRRRRur")): print(current_state.string_move, current_state.g_cost)
+
+            if current_state.is_goal_state(goal_state):
+                return current_state, data.node_count
             
             # Track the state by its position and boxes, and only expand if we find a lower cost
             state_key = (tuple(current_state.player_pos), tuple(map(tuple, current_state.boxes)))
@@ -404,11 +410,10 @@ class UCS_GameState:
             # Mark this state with the current cost
             visited[state_key] = current_cost
 
-            if current_state.is_goal_state(goal_state):
-                return current_state, data.node_count
-
             # Expand neighbors
-            for neighbor in current_state.get_neighbors(data):
+            neighbors = current_state.get_neighbors(data)
+            data.node_count += len(neighbors)
+            for neighbor in neighbors:
                 neighbor_key = (tuple(neighbor.player_pos), tuple(map(tuple, neighbor.boxes)))
                 if neighbor_key not in visited or visited[neighbor_key] > neighbor.g_cost:
                     heapq.heappush(priority_queue, (neighbor.g_cost, neighbor))
@@ -693,22 +698,23 @@ def action(row, col, boxes, data, move_ud, move_lr):
         return 0
 
     # Check if the player is moving into a box
-    for i, (box_row, box_col) in enumerate(boxes):
-        if [box_row, box_col] == [new_player_row, new_player_col]:
-            # Calculate the new box position after the move
-            new_box_row = box_row + move_ud
-            new_box_col = box_col + move_lr
-            
-            # Check if the new box position is a wall or another box
-            if (new_box_row, new_box_col) in walls or [new_box_row, new_box_col] in boxes:
-                return 0  # Box cannot be moved here, blocked by wall or another box
-            
-            # Check if the box is trapped
-            if isTrapped(new_box_row, new_box_col, move_ud, move_lr, walls, data.goal_state):
-                return 0  # Box is trapped, cannot move it
+    # improve
+    if [new_player_row, new_player_col] in boxes:
+        # Calculate the new box position after the move
+        new_box_row = new_player_row + move_ud
+        new_box_col = new_player_col + move_lr
+        
+        # Check if the new box position is a wall or another box
+        if (new_box_row, new_box_col) in walls or [new_box_row, new_box_col] in boxes:
+            return 0  # Box cannot be moved here, blocked by wall or another box
+        
+        # Check if the box is trapped
+        if isTrapped(new_box_row, new_box_col, move_ud, move_lr, walls, data.goal_state):
+            return 0  # Box is trapped, cannot move it
 
-            boxes[i] = [new_box_row, new_box_col]
-            return 2
+        box_index = boxes.index([new_player_row, new_player_col])
+        boxes[box_index] = [new_box_row, new_box_col]
+        return 2
 
     # If no box is moved, the player can move freely
     return 1
