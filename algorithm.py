@@ -5,7 +5,6 @@ import threading
 import heapq
 from queue import PriorityQueue
 import numpy as np
-import scipy.optimize   # Requires SciPy library
 from scipy.optimize import linear_sum_assignment
 
 data = None
@@ -511,19 +510,16 @@ class AStar_GameState:
 
         return move_cost
 
-    from scipy.optimize import linear_sum_assignment
+    
 
     def calculate_heuristic(self, state, goal_state):
         """
         Calculate an admissible and consistent heuristic for the Sokoban puzzle.
         This heuristic considers:
         - The weighted distances between each box and each goal.
-        - The minimum distance between the worker and each unsolved box.
-        - An average of the minimum costs across unsolved boxes to prevent overestimation.
+        - The minimum distance between the player and each unsolved box.
         """
         distance_matrix = []
-
-
 
         # Compute weighted Manhattan distances between each box and each goal
         for i, box in enumerate(state.boxes):
@@ -534,26 +530,21 @@ class AStar_GameState:
                 weight = self.data.stone_weights[i] if i < len(self.data.stone_weights) else 1  # Default weight is 1
                 weighted_distance = manhattan_distance * weight
                 row.append(weighted_distance)
-                
-                
-
             distance_matrix.append(row)
 
         # Use the Hungarian algorithm for optimal box-goal assignments
         box_indices, goal_indices = linear_sum_assignment(distance_matrix)
         total_weighted_distance = sum(distance_matrix[box][goal] for box, goal in zip(box_indices, goal_indices))
 
-        
-
-        # Calculate minimum distance between worker and each unsolved box
+        # Calculate minimum distance between player and each unsolved box
         unsolved_boxes = [box for box in state.boxes if box not in goal_state]
-        robot_box_distances = [
+        player_box_distances = [
             abs(state.player_pos[0] - box[0]) + abs(state.player_pos[1] - box[1])
             for box in unsolved_boxes
         ]
-        min_robot_box_distance = min(robot_box_distances) if robot_box_distances else 0
+        min_player_box_distance = min(player_box_distances) if player_box_distances else 0
 
-        return total_weighted_distance + min_robot_box_distance
+        return total_weighted_distance + min_player_box_distance
 
 
     def __lt__(self, other):
