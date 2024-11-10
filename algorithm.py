@@ -311,7 +311,10 @@ class UCS_GameState:
         """
         Check if all the boxes are on the goal positions.
         """
-        return self.boxes == goal_state
+        for box in self.boxes:
+            if(box not in goal_state): return False
+
+        return True
 
     @staticmethod
     def action(row, col, boxes, data, r, c):
@@ -333,8 +336,6 @@ class UCS_GameState:
             box_weight = data.stone_weights[box_index]
 
             # Move the box and update the box positions
-            # boxes.remove([new_row, new_col])
-            # boxes.append([new_box_row, new_box_col])
             boxes[box_index] = [new_box_row, new_box_col]
 
             # Return True (box moved) and the weight of the box
@@ -397,13 +398,12 @@ class UCS_GameState:
         while priority_queue:
             current_cost, current_state = heapq.heappop(priority_queue)
 
-            if(current_state.string_move.startswith("uurDrdLLLUluRRRRRRRRur")): print(current_state.string_move, current_state.g_cost)
-
             if current_state.is_goal_state(goal_state):
                 return current_state, data.node_count
             
             # Track the state by its position and boxes, and only expand if we find a lower cost
             state_key = (tuple(current_state.player_pos), tuple(map(tuple, current_state.boxes)))
+
             if state_key in visited and visited[state_key] <= current_cost:
                 continue
 
@@ -417,7 +417,7 @@ class UCS_GameState:
                 neighbor_key = (tuple(neighbor.player_pos), tuple(map(tuple, neighbor.boxes)))
                 if neighbor_key not in visited or visited[neighbor_key] > neighbor.g_cost:
                     heapq.heappush(priority_queue, (neighbor.g_cost, neighbor))
-
+                    
         return None, data.node_count
 
 

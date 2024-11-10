@@ -194,6 +194,8 @@ class GamePlay(Frame, metaclass=SingletonMeta):
   boxes = [] # A list positions of boxes
   action = None
 
+  process_label = None
+
   def __init__(self, parent, controller):
     Frame.__init__(self, parent, width=1050, height=649 )
     self.bg = PhotoImage(file = "Assets/bg.png") 
@@ -201,9 +203,6 @@ class GamePlay(Frame, metaclass=SingletonMeta):
     # Show image using label 
     label1 = Label( self, image = self.bg) 
     label1.place(x = 0, y = 0) 
-
-    self.proccess_label = Label(self, text = "Processing...", font=("Helvetica", 20, "bold"), fg="white", bg="#222a5c")
-    self.proccess_label.place(relx=0.5, rely=0.2, anchor="center")
 
     # Counter steps:
     self.step_counter = 0
@@ -452,11 +451,15 @@ class GamePlay(Frame, metaclass=SingletonMeta):
     self.counterStep.config(text=f"Step: {self.step_counter}")
     self.counterWeight.config(text=f"Weight: {self.weight_counter}")
 
+    # Delete label
+    if(self.process_label is not None):
+      self.process_label.destroy()
+      self.process_label = None
+
   def show_popup(self, message, color):
     self.proccess_label.destroy()
-    label = Label(self, text =message, font=("Helvetica", 20, "bold"), fg=color, bg="#222a5c")
-    label.place(relx=0.5, rely=0.2, anchor="center")
-    self.after(8000, label.destroy)
+    self.process_label = Label(self, text =message, font=("Helvetica", 20, "bold"), fg=color, bg="#222a5c")
+    self.process_label.place(relx=0.5, rely=0.2, anchor="center")
   
   @classmethod
   def get_instance(cls):
@@ -662,6 +665,9 @@ class Actions():
     goals = gameplay.goals
     stone_weights = gameplay.list_rocks_weight  # Assuming stone weights are available
     
+    gameplay.proccess_label = Label(gameplay, text = "Processing...", font=("Helvetica", 20, "bold"), fg="white", bg="#222a5c")
+    gameplay.proccess_label.place(relx=0.5, rely=0.2, anchor="center")
+
     # Start measuring memory and time
     start_time = time.time()
     
