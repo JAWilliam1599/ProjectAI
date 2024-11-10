@@ -527,8 +527,7 @@ class AStar_GameState:
         """
         distance_matrix = []
 
-        with open("astar_debug_log.txt", "a") as debug_file:
-            debug_file.write("Calculating heuristic...\n")
+        
 
         # Compute weighted Manhattan distances between each box and each goal
         for i, box in enumerate(state.boxes):
