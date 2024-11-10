@@ -457,44 +457,44 @@ class AStar_GameState:
 
         # Check up, down, left, right
         for r, c, move_direction in directions:
+            # Calculate new player position
+            new_player_pos = (row + r, col + c)
+
             # Perform the action to determine if the move is valid and update boxes if needed
             boxes = self.boxes.copy()
             result = action(row, col, boxes, data, r, c)
-            if result == 0: continue
+            if result == 0: 
+                continue  # Skip if move is invalid
 
             # If a box was moved, capitalize the move direction
             if result == 2:
                 move_direction = move_direction.upper()
 
-                # Check if the new state (player position + boxes) has been explored
-                new_state_tuple = (
-                    tuple(new_player_pos),
-                    tuple(tuple(box) for box in boxes)
-                )
+            # Check if the new state (player position + boxes) has been explored
+            new_state_tuple = (
+                tuple(new_player_pos),
+                tuple(tuple(box) for box in boxes)
+            )
 
-                if new_state_tuple not in closed_set:
-                    # Calculate the g-cost (path cost so far) and the heuristic h-cost
-                    move_cost = self.calculate_move_cost(boxes, data)
-                    new_g_cost = self.g_cost + move_cost
-                    new_string_move = self.string_move + move_direction
+            if new_state_tuple not in closed_set:
+                # Calculate the g-cost (path cost so far) and the heuristic h-cost
+                move_cost = self.calculate_move_cost(boxes, data)
+                new_g_cost = self.g_cost + move_cost
+                new_string_move = self.string_move + move_direction
 
-                    # Create a new state with updated costs and moves
-                    new_state = AStar_GameState(new_player_pos, boxes, new_string_move, new_g_cost, self, data)
+                # Create a new state with updated costs and moves
+                new_state = AStar_GameState(new_player_pos, boxes, new_string_move, new_g_cost, self, data)
 
-                    # Debugging output for neighbor generation
-                    debug_message = (f"Generated move {move_direction} to position {new_player_pos}, "
-                                     f"cost: {new_g_cost}, f_cost: {new_state.f_cost}\n")
+                # Debugging output for neighbor generation
+                debug_message = (f"Generated move {move_direction} to position {new_player_pos}, "
+                                 f"cost: {new_g_cost}, f_cost: {new_state.f_cost}\n")
 
-                    # Write to file
-                    with open("astar_debug_log.txt", "a") as debug_file:
-                        debug_file.write(debug_message)
+                # Write to file
+                with open("astar_debug_log.txt", "a") as debug_file:
+                    debug_file.write(debug_message)
 
-                    # Add the new state to the neighbors list
-                    neighbors.append((new_state.f_cost, new_state))
-
-            # If the move was invalid, skip to the next direction
-            else:
-                continue
+                # Add the new state to the neighbors list
+                neighbors.append((new_state.f_cost, new_state))
 
         with open("astar_debug_log.txt", "a") as debug_file:
             debug_file.write(f"Generated {len(neighbors)} neighbors for player position {self.player_pos}\n")
@@ -522,70 +522,69 @@ class AStar_GameState:
 
         return move_cost    
 
-    def calculate_heuristic(self, state, goal_state): 
+    from scipy.optimize import linear_sum_assignment
+
+    def calculate_heuristic(self, state, goal_state):
         """
-        Calculate a heuristic for the Sokoban puzzle that minimizes the total weighted distance between boxes and goals.
-        This method uses an assignment approach to find the optimal box-goal pairing and accounts for the player's position 
-        relative to the box in order to push it toward its goal.
+        Calculate an admissible and consistent heuristic for the Sokoban puzzle.
+        This heuristic considers:
+        - The weighted distances between each box and each goal.
+        - The minimum distance between the worker and each unsolved box.
+        - An average of the minimum costs across unsolved boxes to prevent overestimation.
         """
         distance_matrix = []
 
         with open("astar_debug_log.txt", "a") as debug_file:
             debug_file.write("Calculating heuristic...\n")
 
-        # Calculate the weighted Manhattan distances between each box and each goal
+        # Compute weighted Manhattan distances between each box and each goal
         for i, box in enumerate(state.boxes):
             row = []
             for goal in goal_state:
+                # Calculate Manhattan distance and apply weight
                 manhattan_distance = abs(box[0] - goal[0]) + abs(box[1] - goal[1])
                 weight = self.data.stone_weights[i] if i < len(self.data.stone_weights) else 1  # Default weight is 1
                 weighted_distance = manhattan_distance * weight
                 row.append(weighted_distance)
+                
                 with open("astar_debug_log.txt", "a") as debug_file:
-                    debug_file.write(f"Box {i} at {box} to Goal {goal} -> Manhattan Distance: {manhattan_distance}, "
+                    debug_file.write(f"Box {i} at {box} to Goal {goal} -> "
+                                    f"Manhattan Distance: {manhattan_distance}, "
                                     f"Weight: {weight}, Weighted Distance: {weighted_distance}\n")
+
             distance_matrix.append(row)
 
-        # Use the Hungarian algorithm to find the minimum-cost assignment of boxes to goals
+        # Use the Hungarian algorithm for optimal box-goal assignments
         box_indices, goal_indices = linear_sum_assignment(distance_matrix)
         total_weighted_distance = sum(distance_matrix[box][goal] for box, goal in zip(box_indices, goal_indices))
 
         with open("astar_debug_log.txt", "a") as debug_file:
             debug_file.write("Optimal box-goal assignments:\n")
-        for box, goal in zip(box_indices, goal_indices):
-            with open("astar_debug_log.txt", "a") as debug_file:
+            for box, goal in zip(box_indices, goal_indices):
                 debug_file.write(f"Box {box} assigned to Goal {goal} with cost: {distance_matrix[box][goal]}\n")
 
-        # Calculate the minimum distance between the worker and any box for the heuristic
-        robot_box_distances = []
-        for i, box in enumerate(state.boxes):
-            if box not in goal_state:  # Ignore boxes that are already on goals
-                goal = goal_state[goal_indices[i]]  # The goal assigned to this box
-
-                # Determine the direction the box must move towards its goal
-                if goal[1] < box[1]:  # Goal is to the left of the box -> player must be to the right
-                    adjacent_position = (box[0], box[1] + 1)
-                elif goal[1] > box[1]:  # Goal is to the right of the box -> player must be to the left
-                    adjacent_position = (box[0], box[1] - 1)
-                elif goal[0] < box[0]:  # Goal is above the box -> player must be below
-                    adjacent_position = (box[0] + 1, box[1])
-                elif goal[0] > box[0]:  # Goal is below the box -> player must be above
-                    adjacent_position = (box[0] - 1, box[1])
-
-                # Calculate the Manhattan distance to the adjacent position without checking for validity
-                distance = abs(state.player_pos[0] - adjacent_position[0]) + abs(state.player_pos[1] - adjacent_position[1])
-                robot_box_distances.append(distance)
-
+        # Calculate minimum distance between worker and each unsolved box
+        unsolved_boxes = [box for box in state.boxes if box not in goal_state]
+        robot_box_distances = [
+            abs(state.player_pos[0] - box[0]) + abs(state.player_pos[1] - box[1])
+            for box in unsolved_boxes
+        ]
         min_robot_box_distance = min(robot_box_distances) if robot_box_distances else 0
 
         with open("astar_debug_log.txt", "a") as debug_file:
-            debug_file.write(f"Minimum distance between robot and nearest box (adjacent position): {min_robot_box_distance}\n")
+            debug_file.write(f"Minimum distance between worker and nearest unsolved box: {min_robot_box_distance}\n")
+
+        # Calculate the heuristic by averaging the total weighted distance over unsolved boxes
+        num_unsolved_boxes = len(unsolved_boxes)
+        averaged_heuristic = (total_weighted_distance + min_robot_box_distance) / num_unsolved_boxes if num_unsolved_boxes else 0
+
+        # Log final heuristic result
         with open("astar_debug_log.txt", "a") as debug_file:
-            debug_file.write(f"Total weighted distance: {total_weighted_distance}, Total heuristic: {total_weighted_distance + min_robot_box_distance}\n")
+            debug_file.write(f"Total weighted distance: {total_weighted_distance}, "
+                            f"Average heuristic per box: {averaged_heuristic}, "
+                            f"Final heuristic: {averaged_heuristic}\n")
 
-        # Return the total cost as the heuristic
-        return total_weighted_distance + min_robot_box_distance
-
+        return averaged_heuristic
 
 
     def __lt__(self, other):
@@ -600,69 +599,56 @@ class AStar:
     def __init__(self, start_player_pos, start_boxes, data, max_moves=None):
         self.start_player_pos = start_player_pos
         self.start_boxes = start_boxes
-        self.data = data  # Reference to Initialized_data instance
+        self.data = data
         self.open_list = []  # Min-heap priority queue
+        self.open_dict = {}  # Dictionary to track open states by their (player_pos, boxes) key
         self.closed_set = set()  # Explored states
-        self.node_count = 0  # Number of nodes explored
-        self.max_moves = max_moves  # Maximum number of moves for debugging
+        self.node_count = 0
+        self.max_moves = max_moves
 
         # Initialize the start node (initial state)
         start_node = AStar_GameState(start_player_pos, start_boxes, "", 0, None, data)
         heapq.heappush(self.open_list, (start_node.f_cost, start_node))
-        with open("astar_debug_log.txt", "a") as debug_file:
-            debug_file.write(f"Start point: Player Position = {start_node.player_pos}, "
-                  f"Boxes = {start_node.boxes}, Goals = {data.goal_state}, f_cost = {start_node.f_cost}\n")
+        self.open_dict[(tuple(start_node.player_pos), tuple(tuple(box) for box in start_node.boxes))] = start_node
+
     def search(self, shared_stop_event):
-        """
-        Perform A* search to find the optimal path.
-        Stops after `max_moves` moves for debugging if set.
-        """
-        move_counter = 0  # Initialize the move counter
+        move_counter = 0
 
         while self.open_list and not shared_stop_event.is_set():
-            # Check if the move counter has reached the max_moves limit
             if self.max_moves is not None and move_counter >= self.max_moves:
                 print(f"Debugging stop: Reached max moves limit of {self.max_moves}")
                 return None, self.node_count
 
-            # Get the state with the lowest f-cost
             f_cost, current_state = heapq.heappop(self.open_list)
+            key = (tuple(current_state.player_pos), tuple(tuple(box) for box in current_state.boxes))
 
-            with open("astar_debug_log.txt", "a") as debug_file:
-                debug_file.write(f"Exploring state: Player Position = {current_state.player_pos}, "
-                f"Boxes = {current_state.boxes}, f_cost = {current_state.f_cost}\n")
+            # If the popped state is no longer in open_dict, skip it
+            if key not in self.open_dict or self.open_dict[key].f_cost != f_cost:
+                continue
+            del self.open_dict[key]
 
-            # If we reach the goal state, return the solution (string_move) and node count
             if current_state.is_goal_state(self.data.goal_state):
-                with open("astar_debug_log.txt", "a") as debug_file:
-                    debug_file.write("Goal reached!")
                 print(f"Solution path: {current_state.string_move}")
-                return current_state, self.node_count  # Return both the solution and node count
+                return current_state, self.node_count
 
-            # Add current state to the closed set (convert player_pos and boxes to tuples)
-            self.closed_set.add((
-                tuple(current_state.player_pos),
-                tuple(tuple(box) for box in current_state.boxes)  # Convert each box position to a tuple
-            ))
-
-            # Generate neighbors and explore them, passing closed_set to avoid redundant states
+            self.closed_set.add(key)
             neighbors = current_state.get_neighbors(self.data, self.closed_set)
-            self.node_count += len(neighbors) # qq j đây, mỗi cái được tạo thì là bằng 0, + neighbor thì cùng lắm là 4
+            self.node_count += len(neighbors)
 
             for _, neighbor in neighbors:
-                # Check if this neighbor has not been visited before
-                neighbor_boxes_tuple = tuple(tuple(box) for box in neighbor.boxes)  # Convert boxes to tuple of tuples
+                neighbor_key = (tuple(neighbor.player_pos), tuple(tuple(box) for box in neighbor.boxes))
 
-                if (tuple(neighbor.player_pos), neighbor_boxes_tuple) not in self.closed_set:
-                    heapq.heappush(self.open_list, (
-                        neighbor.f_cost,  
-                        neighbor
-                    ))
+                if neighbor_key in self.closed_set:
+                    continue
 
-            move_counter += 1  # Increment the move counter
+                if neighbor_key not in self.open_dict or neighbor.f_cost < self.open_dict[neighbor_key].f_cost:
+                    heapq.heappush(self.open_list, (neighbor.f_cost, neighbor))
+                    self.open_dict[neighbor_key] = neighbor
+
+            move_counter += 1
 
         print("No solution found within the move limit.")
-        return None, self.node_count  # No solution found
+        return None, self.node_count
 
 
 ### Action-----------------------------------------------------------------------------------------
