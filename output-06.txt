@@ -1,3 +1,33 @@
 A*
 Steps: 17, Weights: 34, Node: 1170, Time (ms): 1165.118932723999, Memory (MB): 76.55
 rRurUdldlluRuurRurD
+BFS
+Steps: 23, Weights: 42, Node: 3852, Time (ms): 3567.0628547668457, Memory (MB): 77.45
+uuRuuRdldRdrrruulDLrrdL
+UCS
+Steps: 6, Weights: 66, Node: 13727, Time (ms): 507.0304870605469, Memory (MB): 79.96
+dRdRdR
+BFS
+Steps: 8, Weights: 118, Node: 1178, Time (ms): 1794.4080829620361, Memory (MB): 77.38
+rDldRRdR
+UCS
+Steps: 12, Weights: 82, Node: 28216, Time (ms): 418.5750484466553, Memory (MB): 83.61
+rrDulldRdRdR
+UCS
+Steps: 12, Weights: 82, Node: 68812, Time (ms): 578.2225131988525, Memory (MB): 91.23
+rrDDlluRddRR
+UCS
+Steps: 16, Weights: 106, Node: 1147064, Time (ms): 10636.656761169434, Memory (MB): 227.38
+rrDDlluRdrDldRRR
+BFS
+Steps: 10, Weights: 220, Node: 5075, Time (ms): 3117.6228523254395, Memory (MB): 217.56
+rDDDldRRRR
+UCS
+Steps: 0, Weights: 0, Node: 9491597, Time (ms): Timeout, Memory (MB): 330.30
+Timeout
+BFS
+Steps: 12, Weights: 282, Node: 31106, Time (ms): 32984.07697677612, Memory (MB): 329.49
+rDDDDldRRRRR
+A*
+Steps: 18, Weights: 128, Node: 1835363, Time (ms): 59588.17148208618, Memory (MB): 731.09
+rrDDlluRdrDDldRRRR
