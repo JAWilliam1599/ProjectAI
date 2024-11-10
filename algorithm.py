@@ -41,6 +41,9 @@ class Manager_Algorithm:
         self.manager = multiprocessing.Manager()
         self.shared_visited_list = self.manager.list()
         self.pool = None
+        self.poolsize = 16
+        self.isTimeOut = False
+        self.timer = None
 
     def run_bfs(self, player_position, boxes):
         """
@@ -50,10 +53,14 @@ class Manager_Algorithm:
         :return: the goal state and the number of nodes explored
         """
         game_state = BFS_GameState(player_position, boxes)
-        self.pool = multiprocessing.Pool(processes=1)
+        self.pool = multiprocessing.Pool(processes=self.poolsize)
+
+        # Run BFS using ThreadPoolExecutor to handle asynchronous execution
         with concurrent.futures.ThreadPoolExecutor() as executor:
-            future = executor.submit(game_state.parallel_bfs, self.data, self.pool)
+            future = executor.submit(game_state.bfs, self.data, self.shared_visited_list, self.shared_stop_event, self.pool, self.poolsize)
             goal_state, node_counter = future.result()  # Wait for BFS to complete
+            print(self.isTimeOut)
+            if (self.isTimeOut): return 1, node_counter
             return goal_state, node_counter
 
     def run_dfs(self, player_position, boxes):
@@ -64,19 +71,25 @@ class Manager_Algorithm:
         :return: the goal state and the number of nodes explored
         """
         game_state = DFS_GameState(player_position, boxes)
-        self.pool = multiprocessing.Pool(processes=16)
+        self.pool = multiprocessing.Pool(processes=self.poolsize)
+
+        # Run DFS using ThreadPoolExecutor to handle asynchronous execution
         with concurrent.futures.ThreadPoolExecutor() as executor:
-            future = executor.submit(game_state.dfs, self.data, self.shared_visited_list, self.shared_stop_event, self.pool)
+            future = executor.submit(game_state.dfs, self.data, self.shared_visited_list, self.shared_stop_event, self.pool, self.poolsize)
             goal_state, node_counter = future.result()  # Wait for BFS to complete
+            if (self.isTimeOut): return 1, node_counter
             return goal_state, node_counter
             
     def run_ucs(self, player_position, boxes):
         # Initialize game state
         game_state = UCS_GameState(player_position, boxes)
 
-        # Pass `data` to the UCS function
-        goal_state, node_counter = UCS_GameState.ucs(game_state, self.data.goal_state, self.data)
-        return goal_state, node_counter
+        # Run UCS using ThreadPoolExecutor to handle asynchronous execution
+        with concurrent.futures.ThreadPoolExecutor() as executor:
+            future = executor.submit(UCS_GameState.ucs, game_state, self.data.goal_state, self.data, self.shared_stop_event)
+            goal_state, node_counter = future.result() # Wait for UCS to complete
+            if (self.isTimeOut): return 1, node_counter
+            return goal_state, node_counter
 
 
     def run_astar(self, player_position, boxes):
@@ -94,6 +107,7 @@ class Manager_Algorithm:
         with concurrent.futures.ThreadPoolExecutor() as executor:
             future = executor.submit(astar_game_state.search, self.shared_stop_event)
             solution_path, nodes_explored = future.result()  # Wait for A* to complete
+            if (self.isTimeOut): return 1, nodes_explored
             return solution_path, nodes_explored
     
     def stop(self):
@@ -101,6 +115,14 @@ class Manager_Algorithm:
         This function is called to stop all the algorithms
         """
         self.shared_stop_event.set()  # Signal all GameStates to stop
+
+    def timeOut(self):
+        """
+        # This function is called to stop all the algorithms after a timeout
+        """
+        print("Time Out: ")
+        self.isTimeOut = True
+        self.stop()
 
 
 ### BFS--------------------------------------------------------------------------------------------
@@ -118,10 +140,6 @@ class BFS_GameState:
         self.player_pos = player_pos
         self.boxes = boxes
         self.string_move = string_move  # Store the string representation of the move (e.g., "RURU")
-
-    def is_goal_state(self, goal_state):
-        # Check if all the boxes are on the goal
-        return goal_state == self.boxes # Is the goal state is all the boxes is on the goal
         
     def get_neighbors(self, data):
         """
@@ -148,54 +166,45 @@ class BFS_GameState:
 
         return neighbors
     
-    def bfs_process(self, state, data, visited, shared_stop_event):
+    def bfs(self, data, visited, shared_stop_event, pool, pool_size=1):
         """
         Breadth-first search algorithm to find the shortest path to the goal state
         """
-        queue = deque([state])
+        queue = deque([self])
+
+        # Use the shared list
+        visited.append((self.player_pos, tuple(self.boxes)))
 
         while not shared_stop_event.is_set() and queue:
-            current_state = queue.popleft()
+            batch_size = min(len(queue), pool_size)
+            current_states = [queue.popleft() for _ in range(batch_size)]
 
-            neighbors = current_state.get_neighbors(data)
-
-            for neighbor in neighbors:
-                data.node_count += 1
-                if neighbor is None: continue
-
-                if neighbor.is_goal_state(data.goal_state):
+            # Check if in the batch, there is a goal state or not
+            for state in current_states:
+                if is_goal_state(state, data.goal_state): 
                     print("done")
                     queue.clear()
-                    shared_stop_event.set()
-                    return neighbor, data.node_count
+                    return state, data.node_count
+            
+            results = pool.starmap(self.generate_state, [(state, data) for state in current_states])
 
-                # Only add the neighbor to the visited list if it hasn't been added yet
-                visited_list = [neighbor.player_pos, neighbor.boxes]
+            for neighbors in results:
+                for neighbor in neighbors:
+                    if neighbor is None: continue
 
-                if visited_list not in visited:
-                    visited.append(visited_list)
-                    queue.append(neighbor)
-
+                    # Only add the neighbor to the visited list if it hasn't been added yet
+                    visited_list = [neighbor.player_pos, neighbor.boxes]
+                    if visited_list not in visited:
+                        visited.append(visited_list)
+                        queue.append(neighbor)
+                        data.node_count += 1
         return None, data.node_count
-    
-    def parallel_bfs(self, data, pool):
-        with multiprocessing.Manager() as manager:
-            visited = manager.list()
-            visited.append([self.player_pos, self.boxes])
-            shared_stop_event = manager.Event()
 
-            worker_args = [(self, data, visited, shared_stop_event) for _ in range(16)]
-            
-            # Use starmap to launch parallel workers
-            results = pool.starmap(self.bfs_process, worker_args)
-            
-            # Collect results from the worker processes
-            for result in results:
-                neighbor, node_count = result
-                if neighbor is not None:
-                    return neighbor, node_count
-            
-            return None, data.node_count
+    def generate_state(self, state, data):
+        """
+        This function is only for multiprocessing
+        """
+        return state.get_neighbors(data)
 
 ### DFS--------------------------------------------------------------------------------------------
 class DFS_GameState:
@@ -212,12 +221,7 @@ class DFS_GameState:
         self.player_pos = player_pos
         self.boxes = boxes
         self.string_move = string_move  # Store the string representation of the move (e.g., "RURU")
-
-    def is_goal_state(self, goal_state):
-        # Check if all the boxes are on the goal
-        return goal_state == self.boxes # Is the goal state is all the boxes is on the goal
         
-    
     def get_neighbors(self, data):
         """
         Get the possible next states after the player moves\n
@@ -243,7 +247,7 @@ class DFS_GameState:
 
         return neighbors
     
-    def dfs(self, data, visited, shared_stop_event, pool):
+    def dfs(self, data, visited, shared_stop_event, pool, pool_size=1):
         """
         Depth-first search algorithm to find the shortest path to the goal state
         """
@@ -253,12 +257,12 @@ class DFS_GameState:
         visited.append((self.player_pos, tuple(self.boxes)))
 
         while not shared_stop_event.is_set() and queue:
-            batch_size = min(len(queue), 16)
+            batch_size = min(len(queue), pool_size)
             current_states = [queue.pop() for _ in range(batch_size)]
 
             # Check if in the batch, there is a goal state or not
             for state in current_states:
-                if state.is_goal_state(data.goal_state): 
+                if is_goal_state(state, data.goal_state): 
                     print("done")
                     queue.clear()
                     return state, data.node_count
@@ -275,7 +279,6 @@ class DFS_GameState:
                         visited.append(visited_list)
                         queue.append(neighbor)
                         data.node_count += 1
-                        print(neighbor.string_move)
         return None, data.node_count
     
     def generate_state(self, state, data):
@@ -311,10 +314,7 @@ class UCS_GameState:
         """
         Check if all the boxes are on the goal positions.
         """
-        for box in self.boxes:
-            if(box not in goal_state): return False
-
-        return True
+        return all(box in goal_state for box in self.boxes)
 
     @staticmethod
     def action(row, col, boxes, data, r, c):
@@ -388,17 +388,17 @@ class UCS_GameState:
 
         return neighbors
 
-
     @staticmethod
-    def ucs(initial_state, goal_state, data):
+    def ucs(initial_state, goal_state, data, shared_stop_event):
         priority_queue = []
         heapq.heappush(priority_queue, (initial_state.g_cost, initial_state))
         visited = {}
 
-        while priority_queue:
+        while priority_queue and not shared_stop_event.is_set():
             current_cost, current_state = heapq.heappop(priority_queue)
 
-            if current_state.is_goal_state(goal_state):
+            if is_goal_state(current_state, goal_state):
+                shared_stop_event.set()
                 return current_state, data.node_count
             
             # Track the state by its position and boxes, and only expand if we find a lower cost
@@ -490,16 +490,11 @@ class AStar_GameState:
                 # Create a new state with updated costs and moves
                 new_state = AStar_GameState(new_player_pos, boxes, new_string_move, new_g_cost, self, data)
 
-                
-
                 # Add the new state to the neighbors list
                 neighbors.append((new_state.f_cost, new_state))
 
         
         return neighbors
-
-
-
 
     def calculate_move_cost(self, boxes, data):
         """
@@ -527,8 +522,6 @@ class AStar_GameState:
         """
         distance_matrix = []
 
-        
-
         # Compute weighted Manhattan distances between each box and each goal
         for i, box in enumerate(state.boxes):
             row = []
@@ -539,15 +532,11 @@ class AStar_GameState:
                 weighted_distance = manhattan_distance * weight
                 row.append(weighted_distance)
                 
-                
-
             distance_matrix.append(row)
 
         # Use the Hungarian algorithm for optimal box-goal assignments
         box_indices, goal_indices = linear_sum_assignment(distance_matrix)
         total_weighted_distance = sum(distance_matrix[box][goal] for box, goal in zip(box_indices, goal_indices))
-
-        
 
         # Calculate minimum distance between worker and each unsolved box
         unsolved_boxes = [box for box in state.boxes if box not in goal_state]
@@ -557,16 +546,11 @@ class AStar_GameState:
         ]
         min_robot_box_distance = min(robot_box_distances) if robot_box_distances else 0
 
-        
-
         # Calculate the heuristic by averaging the total weighted distance over unsolved boxes
         num_unsolved_boxes = len(unsolved_boxes)
         averaged_heuristic = (total_weighted_distance + min_robot_box_distance) / num_unsolved_boxes if num_unsolved_boxes else 0
 
-        
-
         return averaged_heuristic
-
 
     def __lt__(self, other):
         """
@@ -574,7 +558,6 @@ class AStar_GameState:
         States with lower f_cost are given higher priority.
         """
         return self.f_cost < other.f_cost
-
 
 class AStar:
     def __init__(self, start_player_pos, start_boxes, data, max_moves=None):
@@ -608,8 +591,9 @@ class AStar:
                 continue
             del self.open_dict[key]
 
-            if current_state.is_goal_state(self.data.goal_state):
+            if is_goal_state(current_state, self.data.goal_state):
                 print(f"Solution path: {current_state.string_move}")
+                shared_stop_event.set()
                 return current_state, self.node_count
 
             self.closed_set.add(key)
@@ -632,6 +616,12 @@ class AStar:
         return None, self.node_count
 
 ### Action-----------------------------------------------------------------------------------------
+
+def is_goal_state(self, goal_state):
+    """
+    Check if all the boxes are on the goal positions.
+    """
+    return all(box in goal_state for box in self.boxes)
 
 def action(row, col, boxes, data, move_ud, move_lr):
     """

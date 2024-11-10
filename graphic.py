@@ -240,6 +240,9 @@ class GamePlay(Frame, metaclass=SingletonMeta):
       # Stop the algorithm and Delete the action
       if hasattr(self.action, 'manager'):
         self.action.manager.stop()
+        if(self.action.manager.timer is not None):
+          self.action.manager.timer.cancel()
+          self.action.manager.timer = None
 
       if(self.isPause == False): self.change_pause_btn()
       self.action.exit()
@@ -563,6 +566,7 @@ class Actions():
         print("No player_canvas")
         goal_canvas = self.game_play.map_objects.get(f"{new_row}_{new_column}") # Return the address of the new goal canvas
         goal_canvas.create_image(16, 16, image=self.game_play.player_image, anchor=CENTER, tags="player") # Create image of player
+        self.add_step(weight)
         return
 
       # The player landed on the goal
@@ -572,6 +576,7 @@ class Actions():
       # Destroy the old spot
       self.game_play.player_canvas.destroy()
       self.game_play.player_canvas = None
+      self.add_step(weight)
       return
 
     # The player landed on a space
@@ -676,6 +681,8 @@ class Actions():
 
     # Initialize a manager
     self.manager = a.Manager_Algorithm(data=data)
+    self.manager.timer = threading.Timer(120, self.manager.timeOut)
+    self.manager.timer.start()
     if chosenAlgo == 1:
         algo_name = "BFS"
         goal_state, node_counter = self.manager.run_bfs(player_position, boxes)
@@ -697,7 +704,9 @@ class Actions():
     memUsed = psutil.Process(os.getpid()).memory_info().rss / 1024 ** 2
 
     # Move the player, init a new variable to make sure that string move is unmodified
-    if goal_state is not None:
+    if goal_state is not None and goal_state != 1:
+      self.manager.timer.cancel()
+      self.manager.timer = None
       gameplay.show_popup("Solution found!","#00ff1e")
       # Get the node generated
       string_move = goal_state.string_move.lower()
@@ -718,7 +727,13 @@ class Actions():
         f"Steps: {self.game_play.step_counter}, Weights: {self.game_play.weight_counter}," + 
         f" Node: {node_counter}, Time (ms): {elapsed_time}, Memory (MB): {memUsed:.2f}\n" +
         goal_state.string_move +"\n")
-    else: 
+    elif(goal_state == 1):
+      self.write_to_file(f"{algo_name}\n"  +
+      "Steps: 0, Weights: 0," + 
+      f" Node: {node_counter}, Time (ms): Timeout, Memory (MB): {memUsed:.2f}\n" +
+      "Timeout" +"\n")
+      gameplay.show_popup("Timeout!","#ff0000") 
+    else:
       gameplay.show_popup("No solution!","#f20707")
 
     del data # Remove the reference after running
