@@ -583,9 +583,11 @@ class AStar_GameState:
         with open("astar_debug_log.txt", "a") as debug_file:
             debug_file.write(f"Minimum distance between worker and nearest unsolved box: {min_robot_box_distance}\n")
 
+
         # Calculate the heuristic by averaging the total weighted distance over unsolved boxes
         num_unsolved_boxes = len(unsolved_boxes)
         averaged_heuristic = (total_weighted_distance + min_robot_box_distance) / num_unsolved_boxes if num_unsolved_boxes else 0
+
 
         # Log final heuristic result
         with open("astar_debug_log.txt", "a") as debug_file:
@@ -594,8 +596,6 @@ class AStar_GameState:
                             f"Final heuristic: {averaged_heuristic}\n")
 
         return averaged_heuristic
-
-
 
 
     def __lt__(self, other):
@@ -610,73 +610,58 @@ class AStar:
     def __init__(self, start_player_pos, start_boxes, data, max_moves=None):
         self.start_player_pos = start_player_pos
         self.start_boxes = start_boxes
-        self.data = data  # Reference to Initialized_data instance
+        self.data = data
         self.open_list = []  # Min-heap priority queue
+        self.open_dict = {}  # Dictionary to track open states by their (player_pos, boxes) key
         self.closed_set = set()  # Explored states
-        self.node_count = 0  # Number of nodes explored
-        self.max_moves = max_moves  # Maximum number of moves for debugging
+        self.node_count = 0
+        self.max_moves = max_moves
 
         # Initialize the start node (initial state)
         start_node = AStar_GameState(start_player_pos, start_boxes, "", 0, None, data)
         heapq.heappush(self.open_list, (start_node.f_cost, start_node))
-        with open("astar_debug_log.txt", "a") as debug_file:
-            debug_file.write(f"Start point: Player Position = {start_node.player_pos}, "
-                  f"Boxes = {start_node.boxes}, Goals = {data.goal_state}, f_cost = {start_node.f_cost}\n")
+        self.open_dict[(tuple(start_node.player_pos), tuple(tuple(box) for box in start_node.boxes))] = start_node
+
     def search(self, shared_stop_event):
-        """
-        Perform A* search to find the optimal path.
-        Stops after `max_moves` moves for debugging if set.
-        """
-        move_counter = 0  # Initialize the move counter
+        move_counter = 0
 
         while self.open_list and not shared_stop_event.is_set():
-            # Check if the move counter has reached the max_moves limit
             if self.max_moves is not None and move_counter >= self.max_moves:
                 print(f"Debugging stop: Reached max moves limit of {self.max_moves}")
                 return None, self.node_count
 
-            # Get the state with the lowest f-cost
             f_cost, current_state = heapq.heappop(self.open_list)
+            key = (tuple(current_state.player_pos), tuple(tuple(box) for box in current_state.boxes))
 
-            with open("astar_explore_log.txt", "a") as debug_file:
-                debug_file.write(f"Exploring state: Player Position = {current_state.player_pos}, "
-                f"Boxes = {current_state.boxes}, f_cost = {current_state.f_cost}\n")
-                
-            with open("astar_debug_log.txt", "a") as debug_file:
-                debug_file.write(f"Exploring state: Player Position = {current_state.player_pos}, "
-                f"Boxes = {current_state.boxes}, f_cost = {current_state.f_cost}\n")
 
-            # If we reach the goal state, return the solution (string_move) and node count
+            # If the popped state is no longer in open_dict, skip it
+            if key not in self.open_dict or self.open_dict[key].f_cost != f_cost:
+                continue
+            del self.open_dict[key]
+
+
             if current_state.is_goal_state(self.data.goal_state):
-                with open("astar_debug_log.txt", "a") as debug_file:
-                    debug_file.write("Goal reached!")
                 print(f"Solution path: {current_state.string_move}")
-                return current_state, self.node_count  # Return both the solution and node count
+                return current_state, self.node_count
 
-            # Add current state to the closed set (convert player_pos and boxes to tuples)
-            self.closed_set.add((
-                tuple(current_state.player_pos),
-                tuple(tuple(box) for box in current_state.boxes)  # Convert each box position to a tuple
-            ))
-
-            # Generate neighbors and explore them, passing closed_set to avoid redundant states
+            self.closed_set.add(key)
             neighbors = current_state.get_neighbors(self.data, self.closed_set)
-            self.node_count += len(neighbors) # qq j đây, mỗi cái được tạo thì là bằng 0, + neighbor thì cùng lắm là 4
+            self.node_count += len(neighbors)
 
             for _, neighbor in neighbors:
-                # Check if this neighbor has not been visited before
-                neighbor_boxes_tuple = tuple(tuple(box) for box in neighbor.boxes)  # Convert boxes to tuple of tuples
+                neighbor_key = (tuple(neighbor.player_pos), tuple(tuple(box) for box in neighbor.boxes))
 
-                if (tuple(neighbor.player_pos), neighbor_boxes_tuple) not in self.closed_set:
-                    heapq.heappush(self.open_list, (
-                        neighbor.f_cost,  
-                        neighbor
-                    ))
+                if neighbor_key in self.closed_set:
+                    continue
 
-            move_counter += 1  # Increment the move counter
+                if neighbor_key not in self.open_dict or neighbor.f_cost < self.open_dict[neighbor_key].f_cost:
+                    heapq.heappush(self.open_list, (neighbor.f_cost, neighbor))
+                    self.open_dict[neighbor_key] = neighbor
+
+            move_counter += 1
 
         print("No solution found within the move limit.")
-        return None, self.node_count  # No solution found
+        return None, self.node_count
 
 
 ### Action-----------------------------------------------------------------------------------------
