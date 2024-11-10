@@ -490,19 +490,12 @@ class AStar_GameState:
                 # Create a new state with updated costs and moves
                 new_state = AStar_GameState(new_player_pos, boxes, new_string_move, new_g_cost, self, data)
 
-                # Debugging output for neighbor generation
-                debug_message = (f"Generated move {move_direction} to position {new_player_pos}, "
-                                 f"cost: {new_g_cost}, f_cost: {new_state.f_cost}\n")
-
-                # Write to file
-                with open("astar_debug_log.txt", "a") as debug_file:
-                    debug_file.write(debug_message)
+                
 
                 # Add the new state to the neighbors list
                 neighbors.append((new_state.f_cost, new_state))
 
-        with open("astar_debug_log.txt", "a") as debug_file:
-            debug_file.write(f"Generated {len(neighbors)} neighbors for player position {self.player_pos}\n")
+        
         return neighbors
 
 
@@ -514,18 +507,13 @@ class AStar_GameState:
         """
         move_cost = 1  # Base cost of moving (without pushing a box)
 
-        if boxes != self.boxes:  # If a box was moved
-            # Find which box was moved and add its weight to the cost
-            for i, box in enumerate(boxes):
-                # Ensure we don't go out of range by checking if there's a weight for this box
-                if i < len(data.stone_weights):
-                    move_cost += data.stone_weights[i]  # Add the weight of the moved box
-                else:
-                    # If there is no stone weight for this box, print a warning and set a default weight
-                    print(f"Warning: No stone weight for Box {i} at position {box}. Using default weight 1.")
-                    move_cost += 1  # Default weight if none is provided
+        # Check if any box has been moved
+        for i, box in enumerate(boxes):
+            if box != self.boxes[i]:
+                # Add the weight of the moved box to the move cost
+                move_cost += data.stone_weights[i] if i < len(data.stone_weights) else 1  # Default weight is 1
 
-        return move_cost    
+        return move_cost
 
     from scipy.optimize import linear_sum_assignment
 
@@ -552,10 +540,7 @@ class AStar_GameState:
                 weighted_distance = manhattan_distance * weight
                 row.append(weighted_distance)
                 
-                with open("astar_debug_log.txt", "a") as debug_file:
-                    debug_file.write(f"Box {i} at {box} to Goal {goal} -> "
-                                    f"Manhattan Distance: {manhattan_distance}, "
-                                    f"Weight: {weight}, Weighted Distance: {weighted_distance}\n")
+                
 
             distance_matrix.append(row)
 
@@ -563,10 +548,7 @@ class AStar_GameState:
         box_indices, goal_indices = linear_sum_assignment(distance_matrix)
         total_weighted_distance = sum(distance_matrix[box][goal] for box, goal in zip(box_indices, goal_indices))
 
-        with open("astar_debug_log.txt", "a") as debug_file:
-            debug_file.write("Optimal box-goal assignments:\n")
-            for box, goal in zip(box_indices, goal_indices):
-                debug_file.write(f"Box {box} assigned to Goal {goal} with cost: {distance_matrix[box][goal]}\n")
+        
 
         # Calculate minimum distance between worker and each unsolved box
         unsolved_boxes = [box for box in state.boxes if box not in goal_state]
@@ -576,20 +558,13 @@ class AStar_GameState:
         ]
         min_robot_box_distance = min(robot_box_distances) if robot_box_distances else 0
 
-        with open("astar_debug_log.txt", "a") as debug_file:
-            debug_file.write(f"Minimum distance between worker and nearest unsolved box: {min_robot_box_distance}\n")
-
+        
 
         # Calculate the heuristic by averaging the total weighted distance over unsolved boxes
         num_unsolved_boxes = len(unsolved_boxes)
         averaged_heuristic = (total_weighted_distance + min_robot_box_distance) / num_unsolved_boxes if num_unsolved_boxes else 0
 
-
-        # Log final heuristic result
-        with open("astar_debug_log.txt", "a") as debug_file:
-            debug_file.write(f"Total weighted distance: {total_weighted_distance}, "
-                            f"Average heuristic per box: {averaged_heuristic}, "
-                            f"Final heuristic: {averaged_heuristic}\n")
+        
 
         return averaged_heuristic
 
@@ -629,12 +604,10 @@ class AStar:
             f_cost, current_state = heapq.heappop(self.open_list)
             key = (tuple(current_state.player_pos), tuple(tuple(box) for box in current_state.boxes))
 
-
             # If the popped state is no longer in open_dict, skip it
             if key not in self.open_dict or self.open_dict[key].f_cost != f_cost:
                 continue
             del self.open_dict[key]
-
 
             if current_state.is_goal_state(self.data.goal_state):
                 print(f"Solution path: {current_state.string_move}")
@@ -658,7 +631,6 @@ class AStar:
 
         print("No solution found within the move limit.")
         return None, self.node_count
-
 
 ### Action-----------------------------------------------------------------------------------------
 
