@@ -735,6 +735,10 @@ class Actions():
       gameplay.show_popup("Timeout!","#ff0000") 
     else:
       gameplay.show_popup("No solution!","#f20707")
+      self.write_to_file(f"{algo_name}\n"  +
+      "Steps: 0, Weights: 0," + 
+      f" Node: {node_counter}, Time (ms): {elapsed_time}, Memory (MB): {memUsed:.2f}\n" +
+      "No solution" +"\n")
 
     del data # Remove the reference after running
     print("Stop successfully")

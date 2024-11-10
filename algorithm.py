@@ -522,7 +522,6 @@ class AStar_GameState:
                 weight = self.data.stone_weights[i] if i < len(self.data.stone_weights) else 1  # Default weight is 1
                 weighted_distance = manhattan_distance * weight
                 row.append(weighted_distance)
-                
             distance_matrix.append(row)
 
         # Use the Hungarian algorithm for optimal box-goal assignments
@@ -537,11 +536,7 @@ class AStar_GameState:
         ]
         min_player_box_distance = min(player_box_distances) if player_box_distances else 0
 
-        # Calculate the heuristic by averaging the total weighted distance over unsolved boxes
-        num_unsolved_boxes = len(unsolved_boxes)
-        averaged_heuristic = (total_weighted_distance + min_robot_box_distance) / num_unsolved_boxes if num_unsolved_boxes else 0
-
-        return averaged_heuristic
+        return total_weighted_distance + min_player_box_distance
 
     def __lt__(self, other):
         """
